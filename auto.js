@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         猫国建设者全能小助手 (GUI版 v7.4 - 石油工业版)
 // @namespace    http://tampermonkey.net/
-// @version      7.4.1
+// @version      7.5
 // @description  基于v7.3改进。新增“石油 -> 煤油”自动转换功能。当石油超过指定上限百分比时，自动全部合成为煤油，助力后期工业化发展。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
