@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v6.4 - 还原真相版)
+// @name         猫国建设者全能小助手 (GUI版 v7.1 - 错误终结版)
 // @namespace    http://tampermonkey.net/
-// @version      6.4
-// @description  基于v6.3改进。紧急修复了“概要”合成报错的问题。经排查，游戏内部ID确实为拼写错误的 "compedium"，现已改回该ID以匹配游戏内核。包含猫薄荷低保交易等所有最新功能。
+// @version      7.1
+// @description  基于v7.0改进。1. 将“概要”ID改回游戏内核使用的错别字 "compedium"，修复合成崩溃。2. 修正大使馆升级逻辑，使用 purchaseEmbassy 函数并手动计算价格，解决“不是函数”的报错。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @grant        none
@@ -11,17 +11,17 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v6.4 (还原真相版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.1 (错误终结版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
     // ==========================================
 
-    const STORAGE_KEY = 'KG_AutoAssist_Config_v6_3'; // 继续使用 v6.3 的存储KEY
+    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_0'; // 沿用v7.0配置
 
     const defaultConfig = {
         starchart: { enabled: true },
-        // --- 百分比类 (上限自动合成) ---
+        // --- 百分比类 ---
         wood: { enabled: true, type: 'percent', thresholdPercent: 90 },
         minerals: { enabled: true, type: 'percent', thresholdPercent: 90 },
         coal: { enabled: true, type: 'percent', thresholdPercent: 90 },
@@ -40,6 +40,7 @@
         compendium: { enabled: true, intervalMinutes: 60 },
         blueprint: { enabled: false, intervalMinutes: 60 },
         autoTrade: { enabled: false, intervalMinutes: 20, targetRace: 'zebras' },
+        autoEmbassy: { enabled: false, intervalMinutes: 10, targetRace: 'zebras' },
         cloudSave: { enabled: true, intervalMinutes: 10 },
         // UI状态配置
         ui: { fabHidden: false, posX: 'auto', posY: '20px' }
@@ -52,6 +53,7 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                if (!parsed.autoEmbassy) parsed.autoEmbassy = defaultConfig.autoEmbassy;
                 if (!parsed.emergencyTradeCatnip) parsed.emergencyTradeCatnip = defaultConfig.emergencyTradeCatnip;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
                 if (parsed.ui.fabHidden === undefined) parsed.ui.fabHidden = defaultConfig.ui.fabHidden;
@@ -116,7 +118,7 @@
         const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
         const panelTotalWidth = 490;
-        const panelTotalHeightEstimate = 520;
+        const panelTotalHeightEstimate = 560;
 
         let resetNeeded = false;
         if (config.ui.posX !== 'auto') {
@@ -147,7 +149,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v6.4</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.1</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -170,6 +172,7 @@
                 case 'compendium': updateCompendiumTimer(); break;
                 case 'blueprint': updateBlueprintTimer(); break;
                 case 'autoTrade': updateAutoTradeTimer(); break;
+                case 'autoEmbassy': updateAutoEmbassyTimer(); break;
                 case 'cloudSave': updateCloudSaveTimer(); break;
             }
         }
@@ -181,6 +184,7 @@
             const isInterval = uiType === 'interval';
             const isHybridThreshold = uiType === 'hybrid';
             const isAutoTrade = configKey === 'autoTrade';
+            const isAutoEmbassy = configKey === 'autoEmbassy';
 
             const leftSide = document.createElement('label');
             leftSide.style.cssText = 'display: flex; align-items: center; cursor: pointer; flex-grow: 1; overflow: hidden; white-space: nowrap; margin-right: 10px;';
@@ -194,7 +198,12 @@
                 if (isInterval) updateSpecificTimer(configKey);
             });
             leftSide.appendChild(checkbox);
-            leftSide.appendChild(document.createTextNode(isAutoTrade ? '定时交易' : label));
+            
+            let labelText = label;
+            if (isAutoTrade) labelText = '定时交易';
+            if (isAutoEmbassy) labelText = '自动升级大使馆';
+            
+            leftSide.appendChild(document.createTextNode(labelText));
             row.appendChild(leftSide);
 
             const rightSide = document.createElement('div');
@@ -236,7 +245,7 @@
                     });
                     rightSide.appendChild(input);
                 }
-            } else if (isAutoTrade) {
+            } else if (isAutoTrade || isAutoEmbassy) {
                 const raceSelect = document.createElement('select');
                 raceSelect.style.cssText = 'width: 80px; background: #333; color: #eee; border: 1px solid #444; padding: 1px; font-size: 11px; margin-right: 5px; border-radius: 3px;';
                 let hasUnlockedRaces = false;
@@ -247,11 +256,11 @@
                 }
                 if (!hasUnlockedRaces) { const option = document.createElement('option'); option.text = '无'; raceSelect.disabled = true; raceSelect.appendChild(option); }
                 else {
-                    let targetExists = Array.from(raceSelect.options).some(opt => opt.value === config.autoTrade.targetRace);
-                    if (targetExists) { raceSelect.value = config.autoTrade.targetRace; }
-                    else if (raceSelect.options.length > 0) { raceSelect.value = raceSelect.options[0].value; config.autoTrade.targetRace = raceSelect.value; saveConfig(); }
+                    let targetExists = Array.from(raceSelect.options).some(opt => opt.value === config[configKey].targetRace);
+                    if (targetExists) { raceSelect.value = config[configKey].targetRace; }
+                    else if (raceSelect.options.length > 0) { raceSelect.value = raceSelect.options[0].value; config[configKey].targetRace = raceSelect.value; saveConfig(); }
                 }
-                raceSelect.addEventListener('change', (e) => { config.autoTrade.targetRace = e.target.value; saveConfig(); });
+                raceSelect.addEventListener('change', (e) => { config[configKey].targetRace = e.target.value; saveConfig(); });
                 rightSide.appendChild(raceSelect);
             }
             if (isInterval) {
@@ -287,6 +296,7 @@
         contentContainer.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
         contentContainer.appendChild(createControlItem('定时合蓝图', 'blueprint', 'interval'));
         contentContainer.appendChild(createControlItem('定时交易', 'autoTrade', 'interval'));
+        contentContainer.appendChild(createControlItem('自动升级大使馆', 'autoEmbassy', 'interval'));
         contentContainer.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
         panel.appendChild(contentContainer);
@@ -381,7 +391,7 @@
         hunters: () => { try { if (gamePage.village.huntAll) { gamePage.village.huntAll(); console.log(`【自动化】✅ 已通过内核调用派出猎人。`); } } catch (e) { console.error('派出猎人出错:', e); } },
         praise: () => { try { if (gamePage.resPool.get('faith').value > 0) { gamePage.religion.praise(); console.log(`【自动化】☀️ 已通过内核调用“赞美太阳”！`); } } catch (e) {} },
         manuscript: () => { try { gamePage.craftAll('manuscript'); console.log(`【自动化】📜 已执行合成全部手稿。`); } catch (e) { console.error('合成手稿出错:', e); } },
-        // 【修复】改回 'compedium' (游戏内的错误拼写)，确保功能可用
+        // 【核心修复】必须使用 'compedium' 这个错别字，匹配游戏内核
         compendium: () => { try { gamePage.craftAll('compedium'); console.log(`【自动化】📚 已执行合成全部概要。`); } catch (e) { console.error('合成概要出错:', e); } },
         blueprint: () => { try { gamePage.craftAll('blueprint'); console.log(`【自动化】📘 已执行合成全部蓝图。`); } catch (e) { console.error('合成蓝图出错:', e); } },
         autoTrade: () => {
@@ -396,6 +406,39 @@
                     console.warn(`【自动化】⚠️ 交易失败：未找到ID为 [${targetId}] 的已解锁种族。`);
                 }
             } catch (e) { console.error(`【自动化】❌ 自动交易出错:`, e); }
+        },
+        // 【核心修复】重写大使馆升级逻辑
+        autoEmbassy: () => {
+            const targetId = config.autoEmbassy.targetRace;
+            if (!targetId || !gamePage.diplomacy || !gamePage.diplomacy.races) return;
+            
+            try {
+                const race = gamePage.diplomacy.races.find(r => r.name === targetId);
+                if (!race || !race.unlocked) {
+                    console.warn(`【自动化】⚠️ 大使馆升级跳过：目标种族 [${targetId}] 未找到或未解锁。`);
+                    return;
+                }
+
+                // 游戏内大使馆价格公式：文化 = 25 * 1.15^等级
+                // 改为手动计算，不调用不存在的函数
+                const requiredCulture = 25 * Math.pow(1.15, race.embassyLevel);
+                const cultureRes = gamePage.resPool.get('culture');
+
+                // 1. 检查上限是否足够
+                if (cultureRes.maxValue > 0 && cultureRes.maxValue < requiredCulture) {
+                    // 上限不够，静默跳过
+                    return;
+                }
+
+                // 2. 检查当前存量是否足够
+                if (cultureRes.value >= requiredCulture) {
+                    // 修正购买函数为 purchaseEmbassy
+                    gamePage.diplomacy.purchaseEmbassy(race);
+                    console.log(`【自动化】🏛️ 成功为 [${race.title}] 升级大使馆！(等级: ${race.embassyLevel})`);
+                }
+            } catch (e) {
+                console.error(`【自动化】❌ 自动升级大使馆出错:`, e);
+            }
         },
         cloudSave: () => {
              if (!config.cloudSave.enabled) return;
@@ -452,6 +495,7 @@
     function updateCompendiumTimer() { updateTimer('compendium'); }
     function updateBlueprintTimer() { updateTimer('blueprint'); }
     function updateAutoTradeTimer() { updateTimer('autoTrade'); }
+    function updateAutoEmbassyTimer() { updateTimer('autoEmbassy'); }
     function updateCloudSaveTimer() { updateTimer('cloudSave'); }
 
 
@@ -467,9 +511,9 @@
 
         window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
         updateHunterTimer(); updatePraiseTimer(); updateManuscriptTimer();
-        updateCompendiumTimer(); updateBlueprintTimer(); updateAutoTradeTimer(); updateCloudSaveTimer();
+        updateCompendiumTimer(); updateBlueprintTimer(); updateAutoTradeTimer(); updateAutoEmbassyTimer(); updateCloudSaveTimer();
 
-        console.log('>>> 🐱 全能小助手 v6.4 (还原真相版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.1 (错误终结版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
