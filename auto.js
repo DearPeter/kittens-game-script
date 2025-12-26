@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.3 - GitHub同步版)
+// @name         猫国建设者全能小助手 (GUI版 v7.4 - 石油工业版)
 // @namespace    http://tampermonkey.net/
-// @version      7.4
-// @description  基于v7.2改进。添加了GitHub自动更新链接。功能保持不变：猫薄荷低保交易、安全云存储、UI位置保护等。
+// @version      7.4.1
+// @description  基于v7.3改进。新增“石油 -> 煤油”自动转换功能。当石油超过指定上限百分比时，自动全部合成为煤油，助力后期工业化发展。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.3 (GitHub同步版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.4 (石油工业版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -29,6 +29,9 @@
         coal: { enabled: true, type: 'percent', thresholdPercent: 90 },
         iron: { enabled: true, type: 'percent', thresholdPercent: 90 },
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        // 【新增】石油 -> 煤油
+        oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
+
         // --- 百分比类 (下限紧急交易) ---
         emergencyTradeCatnip: { enabled: false, type: 'percent', thresholdPercent: 60 },
 
@@ -54,6 +57,9 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                // 确保新字段存在
+                if (!parsed.oilKerosene) parsed.oilKerosene = defaultConfig.oilKerosene;
+
                 if (!parsed.emergencyTradeCatnip) parsed.emergencyTradeCatnip = defaultConfig.emergencyTradeCatnip;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
                 if (parsed.ui.fabHidden === undefined) parsed.ui.fabHidden = defaultConfig.ui.fabHidden;
@@ -71,7 +77,12 @@
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch (e) { console.error('保存配置失败:', e); }
     }
 
-    const capResourceMap = { wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', catnipWood: 'catnip', emergencyTradeCatnip: 'catnip' };
+    // 【新增】oilKerosene 映射到 'oil' 资源，用于计算上限
+    const capResourceMap = {
+        wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron',
+        catnipWood: 'catnip', emergencyTradeCatnip: 'catnip',
+        oilKerosene: 'oil'
+    };
 
     function getActualThreshold(configKey) {
         const itemConfig = config[configKey];
@@ -118,7 +129,7 @@
         const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
         const panelTotalWidth = 490;
-        const panelTotalHeightEstimate = 520;
+        const panelTotalHeightEstimate = 540;
 
         let resetNeeded = false;
         if (config.ui.posX !== 'auto') {
@@ -149,7 +160,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.3</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.4</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -281,6 +292,8 @@
         contentContainer.appendChild(createControlItem('煤炭 -> 钢铁 (上限%)', 'coal', 'hybrid'));
         contentContainer.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
+        // 【新增UI】石油转煤油
+        contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
 
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
@@ -346,6 +359,8 @@
             checkAndCraftThreshold('iron', 'plate', 'iron');
             checkAndCraftThreshold('beam', 'scaffold', 'scaffold');
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
+            // 【新增逻辑】石油转煤油
+            checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
 
             if (config.catnipWood.enabled) {
                 try {
@@ -474,7 +489,7 @@
         updateHunterTimer(); updatePraiseTimer(); updateManuscriptTimer();
         updateCompendiumTimer(); updateBlueprintTimer(); updateAutoTradeTimer(); updateCloudSaveTimer();
 
-        console.log('>>> 🐱 全能小助手 v7.3 (GitHub同步版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.4 (石油工业版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
