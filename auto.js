@@ -1,17 +1,19 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.2 - 精简版) 测试TamperMonkey自动更新功能
+// @name         猫国建设者全能小助手 (GUI版 v7.3 - GitHub同步版)
 // @namespace    http://tampermonkey.net/
-// @version      7.3
-// @description  基于v7.1改进。应用户要求，移除了“自动升级大使馆”功能，使界面和逻辑更加精简。保留了猫薄荷低保交易、安全云存储、UI位置保护等核心特性。
+// @version      7.4
+// @description  基于v7.2改进。添加了GitHub自动更新链接。功能保持不变：猫薄荷低保交易、安全云存储、UI位置保护等。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
+// @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
+// @downloadURL  https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
 // @grant        none
 // ==/UserScript==
 
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.2 (精简版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.3 (GitHub同步版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -40,7 +42,6 @@
         compendium: { enabled: true, intervalMinutes: 60 },
         blueprint: { enabled: false, intervalMinutes: 60 },
         autoTrade: { enabled: false, intervalMinutes: 20, targetRace: 'zebras' },
-        // autoEmbassy 已移除
         cloudSave: { enabled: true, intervalMinutes: 10 },
         // UI状态配置
         ui: { fabHidden: false, posX: 'auto', posY: '20px' }
@@ -53,7 +54,6 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // 移除 autoEmbassy 的读取逻辑
                 if (!parsed.emergencyTradeCatnip) parsed.emergencyTradeCatnip = defaultConfig.emergencyTradeCatnip;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
                 if (parsed.ui.fabHidden === undefined) parsed.ui.fabHidden = defaultConfig.ui.fabHidden;
@@ -149,7 +149,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.2</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.3</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -293,7 +293,6 @@
         contentContainer.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
         contentContainer.appendChild(createControlItem('定时合蓝图', 'blueprint', 'interval'));
         contentContainer.appendChild(createControlItem('定时交易', 'autoTrade', 'interval'));
-        // 移除了大使馆
         contentContainer.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
         panel.appendChild(contentContainer);
@@ -475,7 +474,7 @@
         updateHunterTimer(); updatePraiseTimer(); updateManuscriptTimer();
         updateCompendiumTimer(); updateBlueprintTimer(); updateAutoTradeTimer(); updateCloudSaveTimer();
 
-        console.log('>>> 🐱 全能小助手 v7.2 (精简版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.3 (GitHub同步版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
