@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.2 - 精简版)
+// @name         猫国建设者全能小助手 (GUI版 v7.2 - 精简版) 测试TamperMonkey自动更新功能
 // @namespace    http://tampermonkey.net/
 // @version      7.2
 // @description  基于v7.1改进。应用户要求，移除了“自动升级大使馆”功能，使界面和逻辑更加精简。保留了猫薄荷低保交易、安全云存储、UI位置保护等核心特性。
