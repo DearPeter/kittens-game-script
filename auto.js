@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.6.1 - 智能交易目标切换)
+// @name         猫国建设者全能小助手 (GUI版 v7.7.0 - 配置档案管理)
 // @namespace    http://tampermonkey.net/
-// @version      7.6.1
-// @description  基于v7.6改进。完全保留原有的“定时自动交易”功能（不替代、不新增额外交易）。新增“智能目标切换”：根据铀/钛/库存情况，自动修改定时交易的目标种族（龙/斑马/鲨鱼）。
+// @version      7.7.0
+// @description  基于v7.6.2改进。完全保留所有自动化功能。新增“配置档案管理”模块：可以手工输入名称保存当前配置，并在不同配置方案（如“挂机模式”、“推图模式”）之间一键切换。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,13 +13,14 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.6.1 (智能目标切换版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.7.0 (配置档案管理版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
     // ==========================================
 
-    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_6'; 
+    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_6'; // 当前生效的配置Key
+    const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1'; // 配置档案库Key
 
     const defaultConfig = {
         starchart: { enabled: true },
@@ -34,8 +35,7 @@
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
 
-        // --- 智能交易切换 (v7.6.1 修改) ---
-        // 注意：这里不再控制是否交易，只控制是否“自动切换目标”
+        // --- 智能交易切换 ---
         smartTrade: { 
             enabled: false, 
             minUranium: 1000, 
@@ -69,6 +69,7 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                // 深度合并逻辑，确保新字段存在
                 if (!parsed.smartTrade) parsed.smartTrade = defaultConfig.smartTrade;
                 if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
@@ -80,12 +81,59 @@
                 return { ...defaultConfig, ...parsed };
             }
         } catch (e) { console.error('读取配置失败:', e); }
-        return defaultConfig;
+        return JSON.parse(JSON.stringify(defaultConfig));
     }
 
     function saveConfig() {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch (e) { console.error('保存配置失败:', e); }
     }
+
+    // --- 档案管理函数 ---
+    function getProfiles() {
+        try {
+            const saved = localStorage.getItem(PROFILES_KEY);
+            return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+    }
+
+    function saveProfile(name) {
+        if (!name || name.trim() === '') return false;
+        const profiles = getProfiles();
+        // 保存当前配置的一个副本
+        profiles[name] = JSON.parse(JSON.stringify(config));
+        localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+        return true;
+    }
+
+    function loadProfile(name) {
+        const profiles = getProfiles();
+        if (profiles[name]) {
+            // 读取档案并覆盖当前config
+            config = { ...defaultConfig, ...profiles[name] };
+            // 保留UI位置信息，避免切换配置时面板乱跳
+            const currentUI = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}').ui || defaultConfig.ui;
+            config.ui = currentUI;
+            
+            saveConfig(); // 存为当前生效配置
+            createUI(); // 刷新界面
+            
+            // 重置所有定时器以应用新配置
+            Object.keys(timers).forEach(key => updateSpecificTimer(key));
+            return true;
+        }
+        return false;
+    }
+
+    function deleteProfile(name) {
+        const profiles = getProfiles();
+        if (profiles[name]) {
+            delete profiles[name];
+            localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
+            return true;
+        }
+        return false;
+    }
+
 
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
@@ -136,7 +184,7 @@
         const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
         const panelTotalWidth = 490;
-        const panelTotalHeightEstimate = 650;
+        const panelTotalHeightEstimate = 750; // 增加高度以容纳档案管理
 
         let resetNeeded = false;
         if (config.ui.posX !== 'auto') {
@@ -163,7 +211,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.6.1 (智能切目标)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.7.0 (档案管理)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -173,18 +221,6 @@
         panel.appendChild(header);
 
         const contentContainer = document.createElement('div');
-
-        function updateSpecificTimer(key) {
-            switch(key) {
-                case 'hunters': updateHunterTimer(); break;
-                case 'praise': updatePraiseTimer(); break;
-                case 'manuscript': updateManuscriptTimer(); break;
-                case 'compendium': updateCompendiumTimer(); break;
-                case 'blueprint': updateBlueprintTimer(); break;
-                case 'autoTrade': updateAutoTradeTimer(); break;
-                case 'cloudSave': updateCloudSaveTimer(); break;
-            }
-        }
 
         // --- 通用控件 ---
         function createControlItem(label, configKey, uiType = 'none') {
@@ -217,7 +253,6 @@
             rightSide.style.cssText = 'display: flex; align-items: center; justify-content: flex-end;';
 
             if (isHybridThreshold) {
-                // ... 省略 Hybrid 逻辑，与 v7.6 一致 ...
                 const itemType = config[configKey].type;
                 if (itemType === 'percent') {
                     const sliderContainer = document.createElement('div');
@@ -247,7 +282,6 @@
                 }
             } else if (isAutoTrade) {
                 const raceSelect = document.createElement('select');
-                // 【关键】添加ID，以便脚本自动修改它
                 raceSelect.id = 'kg-assist-select-autoTrade-race';
                 raceSelect.style.cssText = 'width: 80px; background: #333; color: #eee; border: 1px solid #444; font-size: 11px; margin-right: 5px;';
                 
@@ -283,7 +317,7 @@
             return row;
         }
 
-        // --- 构建现有列表 ---
+        // --- 构建功能列表 ---
         contentContainer.appendChild(createControlItem('自动点星图', 'starchart'));
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
         contentContainer.appendChild(createControlItem('木材 -> 木梁 (上限%)', 'wood', 'hybrid'));
@@ -303,13 +337,10 @@
         contentContainer.appendChild(createControlItem('定时合手稿', 'manuscript', 'interval'));
         contentContainer.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
         contentContainer.appendChild(createControlItem('定时合蓝图', 'blueprint', 'interval'));
-        // 这里的“定时交易”是核心，被下方的智能逻辑控制
         contentContainer.appendChild(createControlItem('定时交易 (Timer)', 'autoTrade', 'interval'));
         contentContainer.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
-        // ===============================================
-        // 新增：智能交易目标切换 (Target Switcher)
-        // ===============================================
+        // --- 智能交易部分 ---
         const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '10px';
         contentContainer.appendChild(hr);
 
@@ -318,7 +349,6 @@
         tradeHeader.style.marginBottom = '5px'; tradeHeader.style.color = '#ffdb4d';
         contentContainer.appendChild(tradeHeader);
 
-        // 总开关
         const stRow = document.createElement('div');
         stRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;';
         const stLabel = document.createElement('label'); stLabel.style.cursor = 'pointer';
@@ -327,7 +357,6 @@
         stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用目标托管'));
         stRow.appendChild(stLabel); contentContainer.appendChild(stRow);
 
-        // 阈值配置行
         function createTradeInput(labelHtml, key) {
             const div = document.createElement('div');
             div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px; padding-left:20px;';
@@ -343,9 +372,93 @@
         contentContainer.appendChild(createTradeInput("钛 < 此值切 [斑马] (Priority 2):", 'minTitanium'));
         
         const stTip = document.createElement('div');
-        stTip.innerText = "* 仅修改上方“定时交易”的目标，不会额外交易。\n* 若资源 > 90% 则切 [鲨鱼]。";
+        stTip.innerText = "* 仅修改上方“定时交易”的目标。\n* 铀和钛均 > 90% 才切 [鲨鱼]。";
         stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '20px'; stTip.style.lineHeight = '1.4';
         contentContainer.appendChild(stTip);
+
+
+        // ===============================================
+        // 新增：配置档案管理 (Profile Manager)
+        // ===============================================
+        const hrProfile = document.createElement('hr'); 
+        hrProfile.style.borderColor = '#666'; hrProfile.style.marginTop = '15px';
+        contentContainer.appendChild(hrProfile);
+
+        const profileHeader = document.createElement('div');
+        profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>';
+        profileHeader.style.marginBottom = '8px'; profileHeader.style.color = '#88ccff';
+        contentContainer.appendChild(profileHeader);
+
+        // 1. 保存行
+        const saveRow = document.createElement('div');
+        saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:8px;';
+        
+        const nameInput = document.createElement('input');
+        nameInput.placeholder = '输入配置名称 (如: 挂机)';
+        nameInput.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
+        
+        const saveBtn = document.createElement('button');
+        saveBtn.innerText = '保存新配置';
+        saveBtn.style.cssText = 'background:#447744; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
+        saveBtn.addEventListener('click', () => {
+            const name = nameInput.value;
+            if (saveProfile(name)) {
+                alert(`✅ 配置 [${name}] 已保存！`);
+                createUI(); // 刷新下拉列表
+            } else {
+                alert('❌ 请输入有效的配置名称');
+            }
+        });
+        saveRow.appendChild(nameInput); saveRow.appendChild(saveBtn);
+        contentContainer.appendChild(saveRow);
+
+        // 2. 读取/删除行
+        const loadRow = document.createElement('div');
+        loadRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
+        
+        const profileSelect = document.createElement('select');
+        profileSelect.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
+        const profiles = getProfiles();
+        let hasProfiles = false;
+        Object.keys(profiles).forEach(pName => {
+            const opt = document.createElement('option');
+            opt.value = pName; opt.text = pName;
+            profileSelect.appendChild(opt);
+            hasProfiles = true;
+        });
+        if (!hasProfiles) {
+            const opt = document.createElement('option'); opt.text = '-- 无存档 --'; 
+            profileSelect.disabled = true; profileSelect.appendChild(opt);
+        }
+
+        const loadBtn = document.createElement('button');
+        loadBtn.innerText = '读取';
+        loadBtn.style.cssText = 'background:#444477; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px; margin-right:5px;';
+        loadBtn.addEventListener('click', () => {
+            if (profileSelect.disabled) return;
+            const name = profileSelect.value;
+            if (confirm(`❓ 确定要读取配置 [${name}] 吗？当前未保存的修改将丢失。`)) {
+                loadProfile(name);
+            }
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.innerText = '删除';
+        delBtn.style.cssText = 'background:#774444; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
+        delBtn.addEventListener('click', () => {
+            if (profileSelect.disabled) return;
+            const name = profileSelect.value;
+            if (confirm(`⚠️ 确定要删除配置 [${name}] 吗？此操作不可撤销。`)) {
+                deleteProfile(name);
+                createUI(); // 刷新列表
+            }
+        });
+
+        loadRow.appendChild(profileSelect);
+        loadRow.appendChild(loadBtn);
+        loadRow.appendChild(delBtn);
+        contentContainer.appendChild(loadRow);
+
 
         panel.appendChild(contentContainer);
         document.body.appendChild(panel);
@@ -381,7 +494,7 @@
         } catch (e) {}
     }
 
-    // --- [v7.6.1] 智能目标切换逻辑 (不执行交易，只修改目标) ---
+    // --- 智能目标切换逻辑 ---
     function runSmartTradeTargetUpdate() {
         if (!config.smartTrade.enabled) return;
         const game = gamePage;
@@ -391,38 +504,34 @@
         
         let newTarget = null;
 
-        // 优先级 1: 铀量不足 -> 切龙 (Dragons)
+        // Priority 1: 铀不足 -> 龙
         if (resU.value < config.smartTrade.minUranium) {
             newTarget = 'dragons';
         }
-        // 优先级 2: 钛量不足 -> 切斑马 (Zebras)
+        // Priority 2: 钛不足 -> 斑马
         else if (resT.value < config.smartTrade.minTitanium) {
             newTarget = 'zebras';
         }
-        // 优先级 3: 资源即将溢出 -> 切鲨鱼 (Sharks)
+        // Priority 3: 双溢出 -> 鲨鱼
         else {
             const capRatio = (config.smartTrade.capRatio || 90) / 100;
             const isUHigh = resU.value >= (resU.maxValue * capRatio);
             const isTHigh = resT.value >= (resT.maxValue * capRatio);
-            if (isUHigh || isTHigh) {
+            
+            if (isUHigh && isTHigh) {
                 newTarget = 'sharks';
             }
         }
 
-        // 如果触发了切换逻辑，且当前目标与新目标不一致，则更新
         if (newTarget && config.autoTrade.targetRace !== newTarget) {
-            // 检查该种族是否解锁
             const race = game.diplomacy.get(newTarget);
             if (race && race.unlocked) {
-                console.log(`【智能托管】检测到资源变化，将定时交易目标从 [${config.autoTrade.targetRace}] 切换为 [${newTarget}]`);
+                console.log(`【智能托管】目标切换: [${config.autoTrade.targetRace}] -> [${newTarget}]`);
                 config.autoTrade.targetRace = newTarget;
                 saveConfig();
                 
-                // 同步更新UI上的下拉框 (如果面板打开着)
                 const selectEl = document.getElementById('kg-assist-select-autoTrade-race');
-                if (selectEl) {
-                    selectEl.value = newTarget;
-                }
+                if (selectEl) { selectEl.value = newTarget; }
             }
         }
     }
@@ -441,7 +550,6 @@
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
 
-            // 运行智能目标切换逻辑
             runSmartTradeTargetUpdate();
 
             if (config.catnipWood.enabled) {
@@ -480,12 +588,12 @@
                     if (gold && gold.maxValue > 0) {
                         if (gold.value >= gold.maxValue && config.hunters.enabled) {
                             config.hunters.enabled = false;
-                            updateHunterTimer(); saveConfig();
+                            updateSpecificTimer('hunters'); saveConfig();
                             const cb = document.getElementById('kg-assist-cb-hunters');
                             if (cb) cb.checked = false;
                         } else if (gold.value < 1000 && !config.hunters.enabled) {
                             config.hunters.enabled = true;
-                            updateHunterTimer(); saveConfig();
+                            updateSpecificTimer('hunters'); saveConfig();
                             const cb = document.getElementById('kg-assist-cb-hunters');
                             if (cb) cb.checked = true;
                         }
@@ -502,7 +610,6 @@
         manuscript: () => { try { gamePage.craftAll('manuscript'); console.log(`【自动化】📜 合成手稿。`); } catch (e) {} },
         compendium: () => { try { gamePage.craftAll('compedium'); console.log(`【自动化】📚 合成概要。`); } catch (e) {} },
         blueprint: () => { try { gamePage.craftAll('blueprint'); console.log(`【自动化】📘 合成蓝图。`); } catch (e) {} },
-        // 定时交易：仅仅执行“与当前配置的目标种族交易”
         autoTrade: () => {
             const targetId = config.autoTrade.targetRace;
             if (!targetId || !gamePage.diplomacy) return;
@@ -510,7 +617,7 @@
                 const race = gamePage.diplomacy.races.find(r => r.name === targetId);
                 if (race && race.unlocked) {
                     gamePage.diplomacy.tradeAll(race);
-                    console.log(`【自动化】🤝 定时任务触发：与 [${race.title}] (ID: ${race.name}) 交易全部资源。`);
+                    console.log(`【自动化】🤝 定时交易: [${race.title}] (ID: ${race.name})`);
                 }
             } catch (e) { console.error(`交易出错:`, e); }
         },
@@ -523,13 +630,13 @@
                  console.log(`【自动化】☁️ 云存储已执行。`);
              } else {
                  if (gamePage.server && gamePage.server.toggle) {
-                     gamePage.server.toggle(); // 尝试打开菜单以便下次执行
+                     gamePage.server.toggle();
                  }
              }
         }
     };
 
-    function updateTimer(key) {
+    function updateSpecificTimer(key) {
         if (timers[key]) clearInterval(timers[key]);
         if (config[key].enabled) {
             const intervalMs = Math.max((config[key].intervalMinutes || 60) * 60 * 1000, 60000);
@@ -537,14 +644,6 @@
             console.log(`[设置] ${key} 定时器已更新，间隔: ${config[key].intervalMinutes} 分钟。`);
         }
     }
-    
-    function updateHunterTimer() { updateTimer('hunters'); }
-    function updatePraiseTimer() { updateTimer('praise'); }
-    function updateManuscriptTimer() { updateTimer('manuscript'); }
-    function updateCompendiumTimer() { updateTimer('compendium'); }
-    function updateBlueprintTimer() { updateTimer('blueprint'); }
-    function updateAutoTradeTimer() { updateTimer('autoTrade'); }
-    function updateCloudSaveTimer() { updateTimer('cloudSave'); }
 
     // ==========================================
     // 4. 启动与清理 (Init & Cleanup)
@@ -557,10 +656,9 @@
         createUI();
 
         window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
-        updateHunterTimer(); updatePraiseTimer(); updateManuscriptTimer();
-        updateCompendiumTimer(); updateBlueprintTimer(); updateAutoTradeTimer(); updateCloudSaveTimer();
+        Object.keys(tasks).forEach(key => updateSpecificTimer(key));
 
-        console.log('>>> 🐱 全能小助手 v7.6.1 (智能目标切换版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.7.0 (档案管理版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
