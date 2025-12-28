@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         猫国建设者全能小助手 (GUI版 v7.5 - 智能猎人版)
 // @namespace    http://tampermonkey.net/
-// @version      7.5
+// @version      7.5.1
 // @description  基于v7.4改进。新增“智能猎人控制”开关：当黄金达到上限时自动停止派猎人，当黄金低于1000时自动恢复派猎人。实现资源与猎人任务的联动控制。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
