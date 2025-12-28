@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.4 - 石油工业版)
+// @name         猫国建设者全能小助手 (GUI版 v7.5 - 智能猎人版)
 // @namespace    http://tampermonkey.net/
 // @version      7.5
-// @description  基于v7.3改进。新增“石油 -> 煤油”自动转换功能。当石油超过指定上限百分比时，自动全部合成为煤油，助力后期工业化发展。
+// @description  基于v7.4改进。新增“智能猎人控制”开关：当黄金达到上限时自动停止派猎人，当黄金低于1000时自动恢复派猎人。实现资源与猎人任务的联动控制。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,13 +13,13 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.4 (石油工业版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.5 (智能猎人版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
     // ==========================================
 
-    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_0';
+    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_0'; // 沿用存储KEY
 
     const defaultConfig = {
         starchart: { enabled: true },
@@ -29,8 +29,10 @@
         coal: { enabled: true, type: 'percent', thresholdPercent: 90 },
         iron: { enabled: true, type: 'percent', thresholdPercent: 90 },
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
-        // 【新增】石油 -> 煤油
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        
+        // --- 智能控制类 【新增】 ---
+        smartHunterGold: { enabled: false }, // 黄金控制猎人开关
 
         // --- 百分比类 (下限紧急交易) ---
         emergencyTradeCatnip: { enabled: false, type: 'percent', thresholdPercent: 60 },
@@ -58,8 +60,10 @@
             if (saved) {
                 const parsed = JSON.parse(saved);
                 // 确保新字段存在
+                if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
+                
+                // 兼容旧字段
                 if (!parsed.oilKerosene) parsed.oilKerosene = defaultConfig.oilKerosene;
-
                 if (!parsed.emergencyTradeCatnip) parsed.emergencyTradeCatnip = defaultConfig.emergencyTradeCatnip;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
                 if (parsed.ui.fabHidden === undefined) parsed.ui.fabHidden = defaultConfig.ui.fabHidden;
@@ -77,9 +81,8 @@
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch (e) { console.error('保存配置失败:', e); }
     }
 
-    // 【新增】oilKerosene 映射到 'oil' 资源，用于计算上限
-    const capResourceMap = {
-        wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron',
+    const capResourceMap = { 
+        wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
         catnipWood: 'catnip', emergencyTradeCatnip: 'catnip',
         oilKerosene: 'oil'
     };
@@ -129,7 +132,7 @@
         const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
         const panelTotalWidth = 490;
-        const panelTotalHeightEstimate = 540;
+        const panelTotalHeightEstimate = 580; // 适应新增条目
 
         let resetNeeded = false;
         if (config.ui.posX !== 'auto') {
@@ -160,7 +163,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.4</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 全能小助手 v7.5</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -197,10 +200,14 @@
 
             const leftSide = document.createElement('label');
             leftSide.style.cssText = 'display: flex; align-items: center; cursor: pointer; flex-grow: 1; overflow: hidden; white-space: nowrap; margin-right: 10px;';
+            
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = config[configKey].enabled;
             checkbox.style.marginRight = '8px';
+            // 【关键】给checkbox添加ID，方便后续程序自动切换状态时更新UI
+            checkbox.id = 'kg-assist-cb-' + configKey;
+            
             checkbox.addEventListener('change', (e) => {
                 config[configKey].enabled = e.target.checked;
                 saveConfig();
@@ -292,7 +299,6 @@
         contentContainer.appendChild(createControlItem('煤炭 -> 钢铁 (上限%)', 'coal', 'hybrid'));
         contentContainer.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
-        // 【新增UI】石油转煤油
         contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
 
@@ -301,6 +307,9 @@
         contentContainer.appendChild(createControlItem('毛皮 ->羊皮纸 (固定值)', 'parchment', 'hybrid'));
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
         contentContainer.appendChild(createControlItem('自动派猎人', 'hunters', 'interval'));
+        // 【新增UI】智能猎人控制
+        contentContainer.appendChild(createControlItem('智能猎人 (金满停/低开)', 'smartHunterGold'));
+        
         contentContainer.appendChild(createControlItem('自动赞美太阳', 'praise', 'interval'));
         contentContainer.appendChild(createControlItem('定时合手稿', 'manuscript', 'interval'));
         contentContainer.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
@@ -311,6 +320,7 @@
         panel.appendChild(contentContainer);
         document.body.appendChild(panel);
 
+        // UI拖拽逻辑...
         let isDragging = false; let offsetX, offsetY;
         header.addEventListener('mousedown', (e) => { isDragging = true; offsetX = e.clientX - panel.offsetLeft; offsetY = e.clientY - panel.offsetTop; header.style.cursor = 'grabbing'; });
         document.addEventListener('mousemove', (e) => {
@@ -359,7 +369,6 @@
             checkAndCraftThreshold('iron', 'plate', 'iron');
             checkAndCraftThreshold('beam', 'scaffold', 'scaffold');
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
-            // 【新增逻辑】石油转煤油
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
 
             if (config.catnipWood.enabled) {
@@ -393,6 +402,37 @@
                         }
                     }
                 } catch (e) {}
+            }
+
+            // 【新增】智能猎人逻辑：监控黄金
+            if (config.smartHunterGold.enabled) {
+                try {
+                    const gold = gamePage.resPool.get('gold');
+                    if (gold && gold.maxValue > 0) {
+                        // 逻辑1：黄金满 -> 停止猎人
+                        if (gold.value >= gold.maxValue && config.hunters.enabled) {
+                            config.hunters.enabled = false;
+                            updateHunterTimer(); // 立即停止定时器
+                            saveConfig();
+                            // 同步UI状态
+                            const cb = document.getElementById('kg-assist-cb-hunters');
+                            if (cb) cb.checked = false;
+                            console.log('【自动化】💰 黄金已满，智能暂停自动派猎人。');
+                        }
+                        // 逻辑2：黄金 < 1000 -> 开启猎人
+                        else if (gold.value < 1000 && !config.hunters.enabled) {
+                            config.hunters.enabled = true;
+                            updateHunterTimer(); // 立即开启定时器
+                            saveConfig();
+                            // 同步UI状态
+                            const cb = document.getElementById('kg-assist-cb-hunters');
+                            if (cb) cb.checked = true;
+                            console.log('【自动化】💰 黄金不足1000，智能恢复自动派猎人。');
+                        }
+                    }
+                } catch (e) {
+                    console.error('智能猎人逻辑出错:', e);
+                }
             }
         }
     }
@@ -489,7 +529,7 @@
         updateHunterTimer(); updatePraiseTimer(); updateManuscriptTimer();
         updateCompendiumTimer(); updateBlueprintTimer(); updateAutoTradeTimer(); updateCloudSaveTimer();
 
-        console.log('>>> 🐱 全能小助手 v7.4 (石油工业版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.5 (智能猎人版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
