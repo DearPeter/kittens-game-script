@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.1 - 级联优化)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.2 - E合金合成)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.1
-// @description  基于v7.8.0改进。优化级联交易逻辑：P3作为最终兜底（如鲨鱼），无需设置阈值。扫描逻辑只判断P1和P2的饱和度，当两者都满足设定比例后，自动切换至P3。
+// @version      7.8.2
+// @description  基于v7.8.1改进。新增功能：难得素 -> E合金的自动合成（基于存储上限百分比阈值）。保持级联交易、配置档案等所有功能不变。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.1 (级联优化版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.2 (E合金合成版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -31,6 +31,8 @@
         iron: { enabled: true, type: 'percent', thresholdPercent: 90 },
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        // [新增] E合金
+        eludium: { enabled: false, type: 'percent', thresholdPercent: 90 },
         
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
@@ -41,7 +43,7 @@
             // 默认配置：龙(95%) -> 斑马(90%) -> 鲨鱼(兜底)
             p1: { race: 'dragons', percent: 95 },
             p2: { race: 'zebras', percent: 90 },
-            p3: { race: 'sharks', percent: 0 } // P3百分比不再使用
+            p3: { race: 'sharks', percent: 0 } 
         },
 
         // --- 百分比类 (下限紧急交易) ---
@@ -70,6 +72,8 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                // 深度合并逻辑
+                if (!parsed.eludium) parsed.eludium = defaultConfig.eludium; // 兼容旧档
                 if (!parsed.smartTrade || !parsed.smartTrade.p1) parsed.smartTrade = defaultConfig.smartTrade;
                 if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
@@ -119,9 +123,12 @@
         "lizards": "wood", "sharks": "catnip", "griffins": "wood", "nagas": "minerals",
         "zebras": "titanium", "spiders": "coal", "dragons": "uranium", "leviathans": "timeCrystal"
     };
+    
+    // [新增] eludium -> unobtainium 映射
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
-        catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil'
+        catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil',
+        eludium: 'unobtainium' 
     };
 
     function getActualThreshold(configKey) {
@@ -186,7 +193,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.1 (级联优化)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.2 (E合金合成)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -275,7 +282,10 @@
         contentContainer.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
         contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
+        // [新增] E合金UI
+        contentContainer.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
+        
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
         contentContainer.appendChild(createControlItem('木梁 -> 脚手架 (固定值)', 'scaffold', 'hybrid'));
         contentContainer.appendChild(createControlItem('毛皮 ->羊皮纸 (固定值)', 'parchment', 'hybrid'));
@@ -309,7 +319,6 @@
         stRow.appendChild(stLabel); contentContainer.appendChild(stRow);
 
         // --- 优先级行构建器 ---
-        // isFinal: 如果为true，则不显示百分比滑块
         function createPriorityRow(label, pKey, isFinal = false) {
             const container = document.createElement('div');
             container.style.cssText = 'margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #555;';
@@ -336,7 +345,6 @@
             topRow.appendChild(raceSelect);
             container.appendChild(topRow);
 
-            // 如果不是最终P3，显示滑块
             if (!isFinal) {
                 const btmRow = document.createElement('div');
                 btmRow.style.cssText = 'display:flex; align-items:center;';
@@ -377,7 +385,6 @@
                 btmRow.appendChild(range); btmRow.appendChild(valDisplay);
                 container.appendChild(btmRow);
             } else {
-                // 对于 P3，只监听种族选择变化
                 raceSelect.addEventListener('change', () => { config.smartTrade[pKey].race = raceSelect.value; saveConfig(); });
             }
 
@@ -386,10 +393,10 @@
 
         contentContainer.appendChild(createPriorityRow("优先级 1 (P1):", 'p1'));
         contentContainer.appendChild(createPriorityRow("优先级 2 (P2):", 'p2'));
-        contentContainer.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); // true 表示不显示滑块
+        contentContainer.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); 
         
         const stTip = document.createElement('div');
-        stTip.innerText = "* 逻辑: P1满 -> P2, P2满 -> P3\n* P3 无需设置阈值 (始终接收溢出资源)";
+        stTip.innerText = "* 逻辑: P1满 -> P2, P2满 -> P3\n* P3 无需设置阈值";
         stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '10px';
         contentContainer.appendChild(stTip);
 
@@ -515,6 +522,8 @@
             checkAndCraftThreshold('beam', 'scaffold', 'scaffold');
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
+            // [新增] E合金合成
+            checkAndCraftThreshold('unobtainium', 'eludium', 'eludium');
 
             runSmartTradeCascade();
 
@@ -603,7 +612,7 @@
         createUI();
         window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
         Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-        console.log('>>> 🐱 全能小助手 v7.8.1 (级联优化版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.8.2 (E合金合成版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
