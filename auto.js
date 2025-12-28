@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.7.0 - 配置档案管理)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.1 - 级联优化)
 // @namespace    http://tampermonkey.net/
-// @version      7.7.0
-// @description  基于v7.6.2改进。完全保留所有自动化功能。新增“配置档案管理”模块：可以手工输入名称保存当前配置，并在不同配置方案（如“挂机模式”、“推图模式”）之间一键切换。
+// @version      7.8.1
+// @description  基于v7.8.0改进。优化级联交易逻辑：P3作为最终兜底（如鲨鱼），无需设置阈值。扫描逻辑只判断P1和P2的饱和度，当两者都满足设定比例后，自动切换至P3。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,14 +13,14 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.7.0 (配置档案管理版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.1 (级联优化版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
     // ==========================================
 
-    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_6'; // 当前生效的配置Key
-    const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1'; // 配置档案库Key
+    const STORAGE_KEY = 'KG_AutoAssist_Config_v7_8'; 
+    const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1';
 
     const defaultConfig = {
         starchart: { enabled: true },
@@ -35,12 +35,13 @@
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
 
-        // --- 智能交易切换 ---
+        // --- 智能级联交易 ---
         smartTrade: { 
-            enabled: false, 
-            minUranium: 1000, 
-            minTitanium: 10000,
-            capRatio: 90 
+            enabled: false,
+            // 默认配置：龙(95%) -> 斑马(90%) -> 鲨鱼(兜底)
+            p1: { race: 'dragons', percent: 95 },
+            p2: { race: 'zebras', percent: 90 },
+            p3: { race: 'sharks', percent: 0 } // P3百分比不再使用
         },
 
         // --- 百分比类 (下限紧急交易) ---
@@ -69,12 +70,10 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // 深度合并逻辑，确保新字段存在
-                if (!parsed.smartTrade) parsed.smartTrade = defaultConfig.smartTrade;
+                if (!parsed.smartTrade || !parsed.smartTrade.p1) parsed.smartTrade = defaultConfig.smartTrade;
                 if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
                 if (parsed.ui.fabHidden === undefined) parsed.ui.fabHidden = defaultConfig.ui.fabHidden;
-                
                 if (!parsed.autoTrade || !parsed.autoTrade.targetRace) {
                     parsed.autoTrade = { ...defaultConfig.autoTrade, ...parsed.autoTrade };
                 }
@@ -88,57 +87,41 @@
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); } catch (e) { console.error('保存配置失败:', e); }
     }
 
-    // --- 档案管理函数 ---
-    function getProfiles() {
-        try {
-            const saved = localStorage.getItem(PROFILES_KEY);
-            return saved ? JSON.parse(saved) : {};
-        } catch (e) { return {}; }
-    }
-
+    // --- 档案管理 ---
+    function getProfiles() { try { return JSON.parse(localStorage.getItem(PROFILES_KEY) || '{}'); } catch(e){return {};} }
     function saveProfile(name) {
-        if (!name || name.trim() === '') return false;
+        if (!name || !name.trim()) return false;
         const profiles = getProfiles();
-        // 保存当前配置的一个副本
         profiles[name] = JSON.parse(JSON.stringify(config));
         localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
         return true;
     }
-
     function loadProfile(name) {
         const profiles = getProfiles();
         if (profiles[name]) {
-            // 读取档案并覆盖当前config
             config = { ...defaultConfig, ...profiles[name] };
-            // 保留UI位置信息，避免切换配置时面板乱跳
             const currentUI = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}').ui || defaultConfig.ui;
             config.ui = currentUI;
-            
-            saveConfig(); // 存为当前生效配置
-            createUI(); // 刷新界面
-            
-            // 重置所有定时器以应用新配置
+            saveConfig(); createUI();
             Object.keys(timers).forEach(key => updateSpecificTimer(key));
             return true;
         }
         return false;
     }
-
     function deleteProfile(name) {
         const profiles = getProfiles();
-        if (profiles[name]) {
-            delete profiles[name];
-            localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles));
-            return true;
-        }
+        if (profiles[name]) { delete profiles[name]; localStorage.setItem(PROFILES_KEY, JSON.stringify(profiles)); return true; }
         return false;
     }
 
-
+    // --- 资源映射表 ---
+    const RACE_RES_MAP = {
+        "lizards": "wood", "sharks": "catnip", "griffins": "wood", "nagas": "minerals",
+        "zebras": "titanium", "spiders": "coal", "dragons": "uranium", "leviathans": "timeCrystal"
+    };
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
-        catnipWood: 'catnip', emergencyTradeCatnip: 'catnip',
-        oilKerosene: 'oil'
+        catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil'
     };
 
     function getActualThreshold(configKey) {
@@ -148,14 +131,11 @@
             const resName = capResourceMap[configKey];
             try {
                 const resData = gamePage.resPool.get(resName);
-                if (resData && resData.maxValue > 0) {
-                    return Math.floor(resData.maxValue * (itemConfig.thresholdPercent / 100));
-                }
+                if (resData && resData.maxValue > 0) return Math.floor(resData.maxValue * (itemConfig.thresholdPercent / 100));
             } catch (e) {}
         }
         return 9999999999;
     }
-
 
     // ==========================================
     // 2. 界面构建器 (UI Builder)
@@ -184,20 +164,16 @@
         const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
         const panelTotalWidth = 490;
-        const panelTotalHeightEstimate = 750; // 增加高度以容纳档案管理
+        const panelTotalHeightEstimate = 780; 
 
         let resetNeeded = false;
         if (config.ui.posX !== 'auto') {
             const currentLeft = parseInt(config.ui.posX);
-            if (isNaN(currentLeft) || currentLeft + panelTotalWidth > winWidth) {
-                config.ui.posX = 'auto'; resetNeeded = true;
-            }
+            if (isNaN(currentLeft) || currentLeft + panelTotalWidth > winWidth) { config.ui.posX = 'auto'; resetNeeded = true; }
         }
         if (config.ui.posY !== 'auto') {
              const currentTop = parseInt(config.ui.posY);
-             if (isNaN(currentTop) || currentTop < 0 || currentTop + panelTotalHeightEstimate > winHeight) {
-                 config.ui.posY = '20px'; resetNeeded = true;
-             }
+             if (isNaN(currentTop) || currentTop < 0 || currentTop + panelTotalHeightEstimate > winHeight) { config.ui.posY = '20px'; resetNeeded = true; }
         }
         if (resetNeeded) { saveConfig(); }
 
@@ -206,12 +182,11 @@
         const topPos = config.ui.posY !== 'auto' ? config.ui.posY : '20px';
         const leftPos = config.ui.posX !== 'auto' ? config.ui.posX : 'auto';
         const rightPos = config.ui.posX === 'auto' ? '20px' : 'auto';
-
         panel.style.cssText = `position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; width: 460px; background-color: rgba(0, 0, 0, 0.9); color: #eee; border: 1px solid #555; border-radius: 8px; padding: 12px; z-index: 9999; font-family: sans-serif; font-size: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.5);`;
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.7.0 (档案管理)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.1 (级联优化)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -222,29 +197,22 @@
 
         const contentContainer = document.createElement('div');
 
-        // --- 通用控件 ---
+        // --- Helper: Create Rows ---
         function createControlItem(label, configKey, uiType = 'none') {
             const row = document.createElement('div');
             row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;';
-            
             const isInterval = uiType === 'interval';
             const isHybridThreshold = uiType === 'hybrid';
             const isAutoTrade = configKey === 'autoTrade';
 
             const leftSide = document.createElement('label');
             leftSide.style.cssText = 'display: flex; align-items: center; cursor: pointer; flex-grow: 1;';
-            
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = config[configKey].enabled;
             checkbox.style.marginRight = '8px';
             checkbox.id = 'kg-assist-cb-' + configKey;
-            
-            checkbox.addEventListener('change', (e) => {
-                config[configKey].enabled = e.target.checked;
-                saveConfig();
-                if (isInterval) updateSpecificTimer(configKey);
-            });
+            checkbox.addEventListener('change', (e) => { config[configKey].enabled = e.target.checked; saveConfig(); if (isInterval) updateSpecificTimer(configKey); });
             leftSide.appendChild(checkbox);
             leftSide.appendChild(document.createTextNode(label));
             row.appendChild(leftSide);
@@ -270,9 +238,7 @@
                         percentText.innerText = `${percentVal}% (${actualVal})`;
                     };
                     updatePercentText(rangeInput.value);
-                    rangeInput.addEventListener('input', (e) => {
-                        const val = parseInt(e.target.value); config[configKey].thresholdPercent = val; updatePercentText(val); saveConfig();
-                    });
+                    rangeInput.addEventListener('input', (e) => { const val = parseInt(e.target.value); config[configKey].thresholdPercent = val; updatePercentText(val); saveConfig(); });
                     sliderContainer.appendChild(rangeInput); sliderContainer.appendChild(percentText); rightSide.appendChild(sliderContainer);
                 } else if (itemType === 'fixed') {
                     const input = document.createElement('input'); input.type = 'number'; input.value = config[configKey].thresholdFixed;
@@ -284,20 +250,8 @@
                 const raceSelect = document.createElement('select');
                 raceSelect.id = 'kg-assist-select-autoTrade-race';
                 raceSelect.style.cssText = 'width: 80px; background: #333; color: #eee; border: 1px solid #444; font-size: 11px; margin-right: 5px;';
-                
-                let hasUnlockedRaces = false;
                 if (gamePage.diplomacy && gamePage.diplomacy.races) {
-                    gamePage.diplomacy.races.forEach(race => {
-                        if (race.unlocked) { 
-                            const option = document.createElement('option'); 
-                            option.value = race.name; 
-                            option.text = race.title || race.name; 
-                            raceSelect.appendChild(option); 
-                            hasUnlockedRaces = true; 
-                        }
-                    });
-                }
-                if (hasUnlockedRaces) {
+                    gamePage.diplomacy.races.forEach(race => { if (race.unlocked) { const option = document.createElement('option'); option.value = race.name; option.text = race.title || race.name; raceSelect.appendChild(option); }});
                     raceSelect.value = config[configKey].targetRace;
                 }
                 raceSelect.addEventListener('change', (e) => { config.autoTrade.targetRace = e.target.value; saveConfig(); });
@@ -306,18 +260,13 @@
             if (isInterval) {
                 const input = document.createElement('input'); input.type = 'number'; input.value = config[configKey].intervalMinutes; input.min = 1;
                 input.style.cssText = 'width: 45px; background: #333; color: #eee; border: 1px solid #444; text-align: right;';
-                input.addEventListener('change', (e) => {
-                    config[configKey].intervalMinutes = Math.max(1, parseInt(e.target.value) || 1);
-                    saveConfig(); updateSpecificTimer(configKey);
-                });
-                rightSide.appendChild(input);
-                rightSide.appendChild(document.createTextNode('分'));
+                input.addEventListener('change', (e) => { config[configKey].intervalMinutes = Math.max(1, parseInt(e.target.value) || 1); saveConfig(); updateSpecificTimer(configKey); });
+                rightSide.appendChild(input); rightSide.appendChild(document.createTextNode('分'));
             }
             row.appendChild(rightSide);
             return row;
         }
 
-        // --- 构建功能列表 ---
         contentContainer.appendChild(createControlItem('自动点星图', 'starchart'));
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
         contentContainer.appendChild(createControlItem('木材 -> 木梁 (上限%)', 'wood', 'hybrid'));
@@ -340,12 +289,14 @@
         contentContainer.appendChild(createControlItem('定时交易 (Timer)', 'autoTrade', 'interval'));
         contentContainer.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
-        // --- 智能交易部分 ---
+        // ===============================================
+        // 智能级联交易 (Smart Cascade)
+        // ===============================================
         const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '10px';
         contentContainer.appendChild(hr);
 
         const tradeHeader = document.createElement('div');
-        tradeHeader.innerHTML = '<strong>智能切换定时交易目标</strong>';
+        tradeHeader.innerHTML = '<strong>智能级联交易 (Smart Cascade)</strong>';
         tradeHeader.style.marginBottom = '5px'; tradeHeader.style.color = '#ffdb4d';
         contentContainer.appendChild(tradeHeader);
 
@@ -354,32 +305,95 @@
         const stLabel = document.createElement('label'); stLabel.style.cursor = 'pointer';
         const stCb = document.createElement('input'); stCb.type = 'checkbox'; stCb.checked = config.smartTrade.enabled; stCb.style.marginRight = '8px';
         stCb.addEventListener('change', (e) => { config.smartTrade.enabled = e.target.checked; saveConfig(); });
-        stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用目标托管'));
+        stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用级联逻辑'));
         stRow.appendChild(stLabel); contentContainer.appendChild(stRow);
 
-        function createTradeInput(labelHtml, key) {
-            const div = document.createElement('div');
-            div.style.cssText = 'display:flex; justify-content:space-between; align-items:center; font-size:11px; margin-bottom:4px; padding-left:20px;';
-            const lbl = document.createElement('span'); lbl.innerHTML = labelHtml;
-            const inp = document.createElement('input'); inp.type = 'number'; inp.value = config.smartTrade[key];
-            inp.style.cssText = 'width:60px; background:#333; color:#eee; border:1px solid #444; text-align:right;';
-            inp.addEventListener('change', (e) => { config.smartTrade[key] = Number(e.target.value); saveConfig(); });
-            div.appendChild(lbl); div.appendChild(inp);
-            return div;
+        // --- 优先级行构建器 ---
+        // isFinal: 如果为true，则不显示百分比滑块
+        function createPriorityRow(label, pKey, isFinal = false) {
+            const container = document.createElement('div');
+            container.style.cssText = 'margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #555;';
+            
+            // 行1: 标题 + 种族选择
+            const topRow = document.createElement('div');
+            topRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;';
+            const lbl = document.createElement('span'); lbl.innerHTML = label; lbl.style.fontSize='11px';
+            
+            const raceSelect = document.createElement('select');
+            raceSelect.style.cssText = 'width: 100px; background: #333; color: #eee; border: 1px solid #444; font-size: 11px;';
+            if (gamePage.diplomacy && gamePage.diplomacy.races) {
+                gamePage.diplomacy.races.forEach(race => { 
+                    if (race.unlocked) { 
+                        const opt = document.createElement('option'); 
+                        opt.value = race.name; opt.text = race.title || race.name; 
+                        raceSelect.appendChild(opt); 
+                    }
+                });
+            }
+            raceSelect.value = config.smartTrade[pKey].race;
+            
+            topRow.appendChild(lbl);
+            topRow.appendChild(raceSelect);
+            container.appendChild(topRow);
+
+            // 如果不是最终P3，显示滑块
+            if (!isFinal) {
+                const btmRow = document.createElement('div');
+                btmRow.style.cssText = 'display:flex; align-items:center;';
+                
+                const range = document.createElement('input');
+                range.type = 'range'; range.min = '1'; range.max = '100';
+                range.value = config.smartTrade[pKey].percent;
+                range.style.cssText = 'flex-grow:1; height:5px; background:#555; cursor:pointer; margin-right:5px;';
+                
+                const valDisplay = document.createElement('span');
+                valDisplay.style.cssText = 'font-size:10px; color:#aaa; width: 140px; text-align:right; white-space:nowrap;';
+
+                const updateDisplay = () => {
+                    const race = raceSelect.value;
+                    const pct = parseInt(range.value);
+                    config.smartTrade[pKey].race = race;
+                    config.smartTrade[pKey].percent = pct;
+                    
+                    const resName = RACE_RES_MAP[race] || 'unknown';
+                    let actual = 'N/A';
+                    if (resName !== 'unknown') {
+                        try {
+                            const res = gamePage.resPool.get(resName);
+                            if (res && res.maxValue > 0) {
+                                actual = Math.floor(res.maxValue * (pct / 100));
+                                if (actual > 1000000) actual = (actual/1000000).toFixed(2) + 'M';
+                                else if (actual > 1000) actual = (actual/1000).toFixed(1) + 'K';
+                            } else { actual = "无上限"; }
+                        } catch(e){}
+                    }
+                    let resLabel = resName === 'unknown' ? '' : ` (${resName})`;
+                    valDisplay.innerText = `${pct}% ${resLabel} ≈ ${actual}`;
+                };
+
+                raceSelect.addEventListener('change', () => { updateDisplay(); saveConfig(); });
+                range.addEventListener('input', () => { updateDisplay(); saveConfig(); });
+                updateDisplay();
+                btmRow.appendChild(range); btmRow.appendChild(valDisplay);
+                container.appendChild(btmRow);
+            } else {
+                // 对于 P3，只监听种族选择变化
+                raceSelect.addEventListener('change', () => { config.smartTrade[pKey].race = raceSelect.value; saveConfig(); });
+            }
+
+            return container;
         }
 
-        contentContainer.appendChild(createTradeInput("铀 < 此值切 [龙] (Priority 1):", 'minUranium'));
-        contentContainer.appendChild(createTradeInput("钛 < 此值切 [斑马] (Priority 2):", 'minTitanium'));
+        contentContainer.appendChild(createPriorityRow("优先级 1 (P1):", 'p1'));
+        contentContainer.appendChild(createPriorityRow("优先级 2 (P2):", 'p2'));
+        contentContainer.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); // true 表示不显示滑块
         
         const stTip = document.createElement('div');
-        stTip.innerText = "* 仅修改上方“定时交易”的目标。\n* 铀和钛均 > 90% 才切 [鲨鱼]。";
-        stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '20px'; stTip.style.lineHeight = '1.4';
+        stTip.innerText = "* 逻辑: P1满 -> P2, P2满 -> P3\n* P3 无需设置阈值 (始终接收溢出资源)";
+        stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '10px';
         contentContainer.appendChild(stTip);
 
-
-        // ===============================================
-        // 新增：配置档案管理 (Profile Manager)
-        // ===============================================
+        // --- 档案管理 ---
         const hrProfile = document.createElement('hr'); 
         hrProfile.style.borderColor = '#666'; hrProfile.style.marginTop = '15px';
         contentContainer.appendChild(hrProfile);
@@ -389,99 +403,47 @@
         profileHeader.style.marginBottom = '8px'; profileHeader.style.color = '#88ccff';
         contentContainer.appendChild(profileHeader);
 
-        // 1. 保存行
         const saveRow = document.createElement('div');
         saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:8px;';
-        
         const nameInput = document.createElement('input');
-        nameInput.placeholder = '输入配置名称 (如: 挂机)';
-        nameInput.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
-        
+        nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
         const saveBtn = document.createElement('button');
-        saveBtn.innerText = '保存新配置';
-        saveBtn.style.cssText = 'background:#447744; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
-        saveBtn.addEventListener('click', () => {
-            const name = nameInput.value;
-            if (saveProfile(name)) {
-                alert(`✅ 配置 [${name}] 已保存！`);
-                createUI(); // 刷新下拉列表
-            } else {
-                alert('❌ 请输入有效的配置名称');
-            }
-        });
+        saveBtn.innerText = '保存'; saveBtn.style.cssText = 'background:#447744; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
+        saveBtn.addEventListener('click', () => { if (saveProfile(nameInput.value)) { alert(`✅ [${nameInput.value}] 保存成功`); createUI(); } });
         saveRow.appendChild(nameInput); saveRow.appendChild(saveBtn);
         contentContainer.appendChild(saveRow);
 
-        // 2. 读取/删除行
         const loadRow = document.createElement('div');
         loadRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
-        
         const profileSelect = document.createElement('select');
         profileSelect.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
-        const profiles = getProfiles();
-        let hasProfiles = false;
-        Object.keys(profiles).forEach(pName => {
-            const opt = document.createElement('option');
-            opt.value = pName; opt.text = pName;
-            profileSelect.appendChild(opt);
-            hasProfiles = true;
-        });
-        if (!hasProfiles) {
-            const opt = document.createElement('option'); opt.text = '-- 无存档 --'; 
-            profileSelect.disabled = true; profileSelect.appendChild(opt);
-        }
-
+        Object.keys(getProfiles()).forEach(pName => { const opt = document.createElement('option'); opt.value = pName; opt.text = pName; profileSelect.appendChild(opt); });
+        
         const loadBtn = document.createElement('button');
-        loadBtn.innerText = '读取';
-        loadBtn.style.cssText = 'background:#444477; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px; margin-right:5px;';
-        loadBtn.addEventListener('click', () => {
-            if (profileSelect.disabled) return;
-            const name = profileSelect.value;
-            if (confirm(`❓ 确定要读取配置 [${name}] 吗？当前未保存的修改将丢失。`)) {
-                loadProfile(name);
-            }
-        });
-
+        loadBtn.innerText = '读取'; loadBtn.style.cssText = 'background:#444477; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px; margin-right:5px;';
+        loadBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`读取 [${profileSelect.value}]?`)) loadProfile(profileSelect.value); });
+        
         const delBtn = document.createElement('button');
-        delBtn.innerText = '删除';
-        delBtn.style.cssText = 'background:#774444; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
-        delBtn.addEventListener('click', () => {
-            if (profileSelect.disabled) return;
-            const name = profileSelect.value;
-            if (confirm(`⚠️ 确定要删除配置 [${name}] 吗？此操作不可撤销。`)) {
-                deleteProfile(name);
-                createUI(); // 刷新列表
-            }
-        });
-
-        loadRow.appendChild(profileSelect);
-        loadRow.appendChild(loadBtn);
-        loadRow.appendChild(delBtn);
+        delBtn.innerText = '删除'; delBtn.style.cssText = 'background:#774444; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
+        delBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`删除 [${profileSelect.value}]?`)) { deleteProfile(profileSelect.value); createUI(); } });
+        
+        loadRow.appendChild(profileSelect); loadRow.appendChild(loadBtn); loadRow.appendChild(delBtn);
         contentContainer.appendChild(loadRow);
-
 
         panel.appendChild(contentContainer);
         document.body.appendChild(panel);
 
-        // UI拖拽逻辑...
+        // UI Dragging
         let isDragging = false; let offsetX, offsetY;
         header.addEventListener('mousedown', (e) => { isDragging = true; offsetX = e.clientX - panel.offsetLeft; offsetY = e.clientY - panel.offsetTop; header.style.cursor = 'grabbing'; });
-        document.addEventListener('mousemove', (e) => {
-            if (!isDragging) return;
-            panel.style.left = (e.clientX - offsetX) + 'px';
-            panel.style.top = (e.clientY - offsetY) + 'px';
-        });
-        document.addEventListener('mouseup', () => {
-            if (isDragging) { isDragging = false; header.style.cursor = 'move'; config.ui.posX = panel.style.left; config.ui.posY = panel.style.top; saveConfig(); }
-        });
+        document.addEventListener('mousemove', (e) => { if (isDragging) { panel.style.left = (e.clientX - offsetX) + 'px'; panel.style.top = (e.clientY - offsetY) + 'px'; } });
+        document.addEventListener('mouseup', () => { if (isDragging) { isDragging = false; header.style.cursor = 'move'; config.ui.posX = panel.style.left; config.ui.posY = panel.style.top; saveConfig(); } });
     }
 
-
     // ==========================================
-    // 3. 自动化逻辑核心 (Automation Logic)
+    // 3. 自动化逻辑核心
     // ==========================================
 
-    let hasTradedForCatnipState = false;
     const timers = {};
 
     function checkAndCraftThreshold(resName, craftTargetName, configKey) {
@@ -494,52 +456,56 @@
         } catch (e) {}
     }
 
-    // --- 智能目标切换逻辑 ---
-    function runSmartTradeTargetUpdate() {
+    // --- 核心：智能级联逻辑 (优化版) ---
+    function runSmartTradeCascade() {
         if (!config.smartTrade.enabled) return;
-        const game = gamePage;
         
-        const resU = game.resPool.get("uranium");
-        const resT = game.resPool.get("titanium");
-        
-        let newTarget = null;
+        const cfg = config.smartTrade;
+        let targetRace = cfg.p1.race; // 默认尝试 P1
 
-        // Priority 1: 铀不足 -> 龙
-        if (resU.value < config.smartTrade.minUranium) {
-            newTarget = 'dragons';
-        }
-        // Priority 2: 钛不足 -> 斑马
-        else if (resT.value < config.smartTrade.minTitanium) {
-            newTarget = 'zebras';
-        }
-        // Priority 3: 双溢出 -> 鲨鱼
-        else {
-            const capRatio = (config.smartTrade.capRatio || 90) / 100;
-            const isUHigh = resU.value >= (resU.maxValue * capRatio);
-            const isTHigh = resT.value >= (resT.maxValue * capRatio);
+        // 检查 P1 是否已满
+        if (isRaceResourceFull(cfg.p1.race, cfg.p1.percent)) {
+            // P1 满了，尝试 P2
+            targetRace = cfg.p2.race;
             
-            if (isUHigh && isTHigh) {
-                newTarget = 'sharks';
+            // 检查 P2 是否已满
+            if (isRaceResourceFull(cfg.p2.race, cfg.p2.percent)) {
+                // P2 也满了，直接去 P3 (无需判断 P3 状态)
+                targetRace = cfg.p3.race;
             }
         }
 
-        if (newTarget && config.autoTrade.targetRace !== newTarget) {
-            const race = game.diplomacy.get(newTarget);
+        // 应用目标
+        if (targetRace && config.autoTrade.targetRace !== targetRace) {
+            const race = gamePage.diplomacy.get(targetRace);
             if (race && race.unlocked) {
-                console.log(`【智能托管】目标切换: [${config.autoTrade.targetRace}] -> [${newTarget}]`);
-                config.autoTrade.targetRace = newTarget;
+                console.log(`【级联交易】切换目标: [${config.autoTrade.targetRace}] -> [${targetRace}]`);
+                config.autoTrade.targetRace = targetRace;
                 saveConfig();
-                
-                const selectEl = document.getElementById('kg-assist-select-autoTrade-race');
-                if (selectEl) { selectEl.value = newTarget; }
+                const sel = document.getElementById('kg-assist-select-autoTrade-race');
+                if (sel) sel.value = targetRace;
             }
         }
     }
 
+    // 辅助：判断某资源是否“满”了
+    function isRaceResourceFull(raceName, thresholdPercent) {
+        const resName = RACE_RES_MAP[raceName];
+        if (!resName) return false;
+        try {
+            const res = gamePage.resPool.get(resName);
+            if (!res) return false;
+            // 无上限或上限异常，视为未满
+            if (res.maxValue <= 0) return false;
+
+            const ratio = res.value / res.maxValue;
+            const threshold = thresholdPercent / 100;
+            return ratio >= threshold;
+        } catch(e) { return false; }
+    }
+
     function mainLoopTask() {
-        if (config.starchart.enabled) {
-            try { const btn = document.getElementById('observeBtn'); if (btn && btn.style.display !== 'none') btn.click(); } catch (e) {}
-        }
+        if (config.starchart.enabled) { try { const btn = document.getElementById('observeBtn'); if (btn && btn.style.display !== 'none') btn.click(); } catch (e) {} }
 
         if (gamePage && gamePage.resPool) {
             checkAndCraftThreshold('wood', 'beam', 'wood');
@@ -550,7 +516,7 @@
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
 
-            runSmartTradeTargetUpdate();
+            runSmartTradeCascade();
 
             if (config.catnipWood.enabled) {
                 try {
@@ -569,15 +535,10 @@
                     const catnipRes = gamePage.resPool.get('catnip');
                     const threshold = catnipRes.maxValue * (config.emergencyTradeCatnip.thresholdPercent / 100);
                     if (catnipRes.value < threshold) {
-                        if (!hasTradedForCatnipState) {
-                            const race = gamePage.diplomacy.races.find(r => r.name === 'sharks');
-                            if (race && race.unlocked) {
-                                gamePage.diplomacy.trade(race, 1);
-                                hasTradedForCatnipState = true;
-                            }
+                        const race = gamePage.diplomacy.races.find(r => r.name === 'sharks');
+                        if (race && race.unlocked) {
+                            gamePage.diplomacy.trade(race, 1);
                         }
-                    } else {
-                        if (catnipRes.value > threshold * 1.05 && hasTradedForCatnipState) { hasTradedForCatnipState = false; }
                     }
                 } catch (e) {}
             }
@@ -589,13 +550,11 @@
                         if (gold.value >= gold.maxValue && config.hunters.enabled) {
                             config.hunters.enabled = false;
                             updateSpecificTimer('hunters'); saveConfig();
-                            const cb = document.getElementById('kg-assist-cb-hunters');
-                            if (cb) cb.checked = false;
+                            const cb = document.getElementById('kg-assist-cb-hunters'); if (cb) cb.checked = false;
                         } else if (gold.value < 1000 && !config.hunters.enabled) {
                             config.hunters.enabled = true;
                             updateSpecificTimer('hunters'); saveConfig();
-                            const cb = document.getElementById('kg-assist-cb-hunters');
-                            if (cb) cb.checked = true;
+                            const cb = document.getElementById('kg-assist-cb-hunters'); if (cb) cb.checked = true;
                         }
                     }
                 } catch (e) {}
@@ -603,13 +562,12 @@
         }
     }
 
-    // --- 定时任务区域 ---
     const tasks = {
-        hunters: () => { try { if (gamePage.village.huntAll) { gamePage.village.huntAll(); console.log(`【自动化】✅ 已派出猎人。`); } } catch (e) {} },
-        praise: () => { try { if (gamePage.resPool.get('faith').value > 0) { gamePage.religion.praise(); console.log(`【自动化】☀️ 已赞美太阳。`); } } catch (e) {} },
-        manuscript: () => { try { gamePage.craftAll('manuscript'); console.log(`【自动化】📜 合成手稿。`); } catch (e) {} },
-        compendium: () => { try { gamePage.craftAll('compedium'); console.log(`【自动化】📚 合成概要。`); } catch (e) {} },
-        blueprint: () => { try { gamePage.craftAll('blueprint'); console.log(`【自动化】📘 合成蓝图。`); } catch (e) {} },
+        hunters: () => { try { if (gamePage.village.huntAll) { gamePage.village.huntAll(); console.log(`【自动化】✅ 派出猎人`); } } catch (e) {} },
+        praise: () => { try { if (gamePage.resPool.get('faith').value > 0) { gamePage.religion.praise(); console.log(`【自动化】☀️ 赞美太阳`); } } catch (e) {} },
+        manuscript: () => { try { gamePage.craftAll('manuscript'); console.log(`【自动化】📜 合成手稿`); } catch (e) {} },
+        compendium: () => { try { gamePage.craftAll('compedium'); console.log(`【自动化】📚 合成概要`); } catch (e) {} },
+        blueprint: () => { try { gamePage.craftAll('blueprint'); console.log(`【自动化】📘 合成蓝图`); } catch (e) {} },
         autoTrade: () => {
             const targetId = config.autoTrade.targetRace;
             if (!targetId || !gamePage.diplomacy) return;
@@ -617,7 +575,7 @@
                 const race = gamePage.diplomacy.races.find(r => r.name === targetId);
                 if (race && race.unlocked) {
                     gamePage.diplomacy.tradeAll(race);
-                    console.log(`【自动化】🤝 定时交易: [${race.title}] (ID: ${race.name})`);
+                    console.log(`【自动化】🤝 定时交易: [${race.title}]`);
                 }
             } catch (e) { console.error(`交易出错:`, e); }
         },
@@ -625,14 +583,8 @@
              if (!config.cloudSave.enabled) return;
              const cloudBtn = document.getElementById('cloudSaveBtn');
              if (cloudBtn && cloudBtn.offsetParent !== null) {
-                 if (gamePage.save) gamePage.save();
-                 cloudBtn.click();
-                 console.log(`【自动化】☁️ 云存储已执行。`);
-             } else {
-                 if (gamePage.server && gamePage.server.toggle) {
-                     gamePage.server.toggle();
-                 }
-             }
+                 if (gamePage.save) gamePage.save(); cloudBtn.click(); console.log(`【自动化】☁️ 云存储`);
+             } else if (gamePage.server && gamePage.server.toggle) { gamePage.server.toggle(); }
         }
     };
 
@@ -645,20 +597,13 @@
         }
     }
 
-    // ==========================================
-    // 4. 启动与清理 (Init & Cleanup)
-    // ==========================================
-
     function init() {
         if (window.kgAutoGlobalTimer) clearInterval(window.kgAutoGlobalTimer);
         Object.values(timers).forEach(clearInterval);
-        
         createUI();
-
         window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
         Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-
-        console.log('>>> 🐱 全能小助手 v7.7.0 (档案管理版) 启动成功！ <<<');
+        console.log('>>> 🐱 全能小助手 v7.8.1 (级联优化版) 启动成功！ <<<');
     }
 
     window.stopKgAutoAssist = function() {
@@ -671,5 +616,4 @@
     };
 
     setTimeout(init, 5000);
-
 })();
