@@ -420,14 +420,14 @@
                             console.log('【自动化】💰 黄金已满，智能暂停自动派猎人。');
                         }
                         // 逻辑2：黄金 < 1000 -> 开启猎人
-                        else if (gold.value < 1000 && !config.hunters.enabled) {
+                        else if (gold.value < 10000 && !config.hunters.enabled) {
                             config.hunters.enabled = true;
                             updateHunterTimer(); // 立即开启定时器
                             saveConfig();
                             // 同步UI状态
                             const cb = document.getElementById('kg-assist-cb-hunters');
                             if (cb) cb.checked = true;
-                            console.log('【自动化】💰 黄金不足1000，智能恢复自动派猎人。');
+                            console.log('【自动化】💰 黄金不足10000，智能恢复自动派猎人。');
                         }
                     }
                 } catch (e) {
