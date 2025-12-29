@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.5 - 钛转合金)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.6 - 铀转钍)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.5
-// @description  基于v7.8.4改进。新增功能：当钛达到设定百分比时，自动全量合成为合金，防止资源溢出。保持智能猎人、级联交易等所有原有功能不变。
+// @version      7.8.6
+// @description  基于v7.8.5改进。新增功能：铀 -> 钍 (Thorium) 的自动合成（基于存储上限百分比阈值），防止铀溢出。保持钛转合金、智能猎人等所有原有功能不变。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.5 (钛转合金版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.6 (铀转钍版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -31,10 +31,10 @@
         iron: { enabled: true, type: 'percent', thresholdPercent: 90 },
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
-        // E合金
-        eludium: { enabled: false, type: 'percent', thresholdPercent: 90 },
-        // [新增] 钛 -> 合金
-        titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        // 特殊合成
+        eludium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // E合金
+        titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 }, // 钛->合金
+        uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // [新增] 铀->钍
         
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
@@ -72,8 +72,9 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // 兼容性处理
-                if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy; // [新增]
+                // 兼容旧档：确保新字段存在
+                if (!parsed.uraniumThorium) parsed.uraniumThorium = defaultConfig.uraniumThorium; // [新增]
+                if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy;
                 if (!parsed.eludium) parsed.eludium = defaultConfig.eludium;
                 
                 if (!parsed.smartTrade || !parsed.smartTrade.p1) parsed.smartTrade = defaultConfig.smartTrade;
@@ -126,11 +127,13 @@
         "zebras": "titanium", "spiders": "coal", "dragons": "uranium", "leviathans": "timeCrystal"
     };
     
+    // 资源名映射 (ConfigKey -> GameResourceName)
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
         catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil',
         eludium: 'unobtainium',
-        titaniumAlloy: 'titanium' // [新增] 监控钛资源
+        titaniumAlloy: 'titanium',
+        uraniumThorium: 'uranium' // [新增] 监控铀资源
     };
 
     function getActualThreshold(configKey) {
@@ -197,7 +200,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.5 (合金合成)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.6 (铀转钍)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -287,7 +290,8 @@
         contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
         contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
         contentContainer.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
-        contentContainer.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); // [新增UI]
+        contentContainer.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); 
+        contentContainer.appendChild(createControlItem('铀 -> 钍 (上限%)', 'uraniumThorium', 'hybrid')); // [新增UI]
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
         
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
@@ -519,7 +523,8 @@
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
             checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); // E合金
-            checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); // [新增] 钛->合金
+            checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); // 钛->合金
+            checkAndCraftThreshold('uranium', 'thorium', 'uraniumThorium'); // [新增] 铀->钍
 
             runSmartTradeCascade();
 
@@ -558,10 +563,9 @@
                     if (gold && gold.maxValue > 0) {
                         const isGoldFull = gold.value >= gold.maxValue;
                         const isGoldLow = gold.value < 10000;
-                        // 保底逻辑：如果毛皮或象牙低于1000，视为资源短缺
+                        // 保底逻辑
                         const isResLow = (furs && furs.value < 1000) || (ivory && ivory.value < 1000);
                         
-                        // 1. 强制开启：资源不足 OR (黄金低且猎人未开)
                         if (isResLow && !config.hunters.enabled) {
                             config.hunters.enabled = true;
                             updateSpecificTimer('hunters'); saveConfig();
@@ -574,7 +578,6 @@
                              if(document.getElementById('kg-assist-cb-hunters')) document.getElementById('kg-assist-cb-hunters').checked = true;
                              console.log('【智能猎人】💰 黄金不足，恢复自动派猎人。');
                         }
-                        // 2. 正常关闭：黄金满 AND 资源充足
                         else if (isGoldFull && !isResLow && config.hunters.enabled) {
                              config.hunters.enabled = false;
                              updateSpecificTimer('hunters'); saveConfig();
@@ -631,7 +634,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.5 (合金合成版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.6 (铀转钍版) 启动成功！ <<<');
             }
         }, 1000);
     }
