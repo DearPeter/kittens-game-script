@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.3 - 启动优化)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.4 - 智能猎人优化)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.3
-// @description  基于v7.8.2改进。修复启动逻辑：将固定延时改为智能检测，确保在Game对象完全加载后再启动UI，防止网络卡顿导致脚本报错或面板不显示。
+// @version      7.8.4
+// @description  基于v7.8.3改进。智能猎人逻辑新增“资源保底”条件：当毛皮或象牙低于1000时，强制启动猎人（无视黄金上限），防止稀有资源枯竭。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.3 (启动优化版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.4 (智能猎人优化版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -145,7 +145,6 @@
     // ==========================================
 
     function createUI() {
-        // 安全检查：如果UI尚未加载，先不执行
         if (typeof gamePage === 'undefined' || !gamePage.diplomacy || !gamePage.diplomacy.races) return;
 
         const existingPanel = document.getElementById('kg-auto-assist-panel');
@@ -192,7 +191,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.3 (启动优化)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.4 (智能猎人优化)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -541,18 +540,38 @@
                 } catch (e) {}
             }
 
+            // 【智能猎人逻辑】
             if (config.smartHunterGold.enabled) {
                 try {
                     const gold = gamePage.resPool.get('gold');
+                    const furs = gamePage.resPool.get('furs');
+                    const ivory = gamePage.resPool.get('ivory');
+                    
                     if (gold && gold.maxValue > 0) {
-                        if (gold.value >= gold.maxValue && config.hunters.enabled) {
-                            config.hunters.enabled = false;
-                            updateSpecificTimer('hunters'); saveConfig();
-                            const cb = document.getElementById('kg-assist-cb-hunters'); if (cb) cb.checked = false;
-                        } else if (gold.value < 1000 && !config.hunters.enabled) {
+                        const isGoldFull = gold.value >= gold.maxValue;
+                        const isGoldLow = gold.value < 10000;
+                        // 保底逻辑：如果毛皮或象牙低于1000，视为资源短缺
+                        const isResLow = (furs && furs.value < 1000) || (ivory && ivory.value < 1000);
+                        
+                        // 1. 强制开启：资源不足 OR (黄金低且猎人未开)
+                        if (isResLow && !config.hunters.enabled) {
                             config.hunters.enabled = true;
                             updateSpecificTimer('hunters'); saveConfig();
-                            const cb = document.getElementById('kg-assist-cb-hunters'); if (cb) cb.checked = true;
+                            if(document.getElementById('kg-assist-cb-hunters')) document.getElementById('kg-assist-cb-hunters').checked = true;
+                            console.log('【智能猎人】🔴 稀有资源(毛皮/象牙) < 1000，强制开启猎人。');
+                        }
+                        else if (isGoldLow && !config.hunters.enabled) {
+                             config.hunters.enabled = true;
+                             updateSpecificTimer('hunters'); saveConfig();
+                             if(document.getElementById('kg-assist-cb-hunters')) document.getElementById('kg-assist-cb-hunters').checked = true;
+                             console.log('【智能猎人】💰 黄金不足，恢复自动派猎人。');
+                        }
+                        // 2. 正常关闭：黄金满 AND 资源充足
+                        else if (isGoldFull && !isResLow && config.hunters.enabled) {
+                             config.hunters.enabled = false;
+                             updateSpecificTimer('hunters'); saveConfig();
+                             if(document.getElementById('kg-assist-cb-hunters')) document.getElementById('kg-assist-cb-hunters').checked = false;
+                             console.log('【智能猎人】💰 黄金已满且资源充足，暂停自动派猎人。');
                         }
                     }
                 } catch (e) {}
@@ -596,22 +615,15 @@
     }
 
     function init() {
-        // 等待游戏加载检测
         var checkReady = setInterval(function() {
-            // 只有当 gamePage 对象且其 UI 部分都加载完毕时才启动
             if (typeof gamePage !== 'undefined' && gamePage.ui && gamePage.resPool) {
                 clearInterval(checkReady);
-                
-                // 停止旧的定时器 (如果有)
                 if (window.kgAutoGlobalTimer) clearInterval(window.kgAutoGlobalTimer);
                 Object.values(timers).forEach(clearInterval);
-                
-                // 启动UI和逻辑
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                
-                console.log('>>> 🐱 全能小助手 v7.8.3 (启动优化版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.4 (智能猎人优化版) 启动成功！ <<<');
             }
         }, 1000);
     }
@@ -625,6 +637,5 @@
         if (fab) fab.remove();
     };
 
-    // 立即调用 init，让其内部的定时器去等待
     init();
 })();
