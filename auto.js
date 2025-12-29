@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.4 - 智能猎人优化)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.5 - 钛转合金)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.4
-// @description  基于v7.8.3改进。智能猎人逻辑新增“资源保底”条件：当毛皮或象牙低于1000时，强制启动猎人（无视黄金上限），防止稀有资源枯竭。
+// @version      7.8.5
+// @description  基于v7.8.4改进。新增功能：当钛达到设定百分比时，自动全量合成为合金，防止资源溢出。保持智能猎人、级联交易等所有原有功能不变。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.4 (智能猎人优化版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.5 (钛转合金版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -33,6 +33,8 @@
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
         // E合金
         eludium: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        // [新增] 钛 -> 合金
+        titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 },
         
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
@@ -70,7 +72,10 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                // 兼容性处理
+                if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy; // [新增]
                 if (!parsed.eludium) parsed.eludium = defaultConfig.eludium;
+                
                 if (!parsed.smartTrade || !parsed.smartTrade.p1) parsed.smartTrade = defaultConfig.smartTrade;
                 if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
@@ -124,7 +129,8 @@
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
         catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil',
-        eludium: 'unobtainium' 
+        eludium: 'unobtainium',
+        titaniumAlloy: 'titanium' // [新增] 监控钛资源
     };
 
     function getActualThreshold(configKey) {
@@ -191,7 +197,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.4 (智能猎人优化)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.5 (合金合成)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -281,6 +287,7 @@
         contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
         contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
         contentContainer.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
+        contentContainer.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); // [新增UI]
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
         
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
@@ -512,6 +519,7 @@
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
             checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); // E合金
+            checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); // [新增] 钛->合金
 
             runSmartTradeCascade();
 
@@ -623,7 +631,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.4 (智能猎人优化版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.5 (合金合成版) 启动成功！ <<<');
             }
         }, 1000);
     }
