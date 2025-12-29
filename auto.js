@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.2 - E合金合成)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.3 - 启动优化)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.2
-// @description  基于v7.8.1改进。新增功能：难得素 -> E合金的自动合成（基于存储上限百分比阈值）。保持级联交易、配置档案等所有功能不变。
+// @version      7.8.3
+// @description  基于v7.8.2改进。修复启动逻辑：将固定延时改为智能检测，确保在Game对象完全加载后再启动UI，防止网络卡顿导致脚本报错或面板不显示。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.2 (E合金合成版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.3 (启动优化版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -31,7 +31,7 @@
         iron: { enabled: true, type: 'percent', thresholdPercent: 90 },
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
-        // [新增] E合金
+        // E合金
         eludium: { enabled: false, type: 'percent', thresholdPercent: 90 },
         
         // --- 智能控制类 ---
@@ -40,7 +40,6 @@
         // --- 智能级联交易 ---
         smartTrade: { 
             enabled: false,
-            // 默认配置：龙(95%) -> 斑马(90%) -> 鲨鱼(兜底)
             p1: { race: 'dragons', percent: 95 },
             p2: { race: 'zebras', percent: 90 },
             p3: { race: 'sharks', percent: 0 } 
@@ -58,7 +57,6 @@
         manuscript: { enabled: true, intervalMinutes: 3 },
         compendium: { enabled: true, intervalMinutes: 60 },
         blueprint: { enabled: false, intervalMinutes: 60 },
-        // 核心：定时交易
         autoTrade: { enabled: false, intervalMinutes: 20, targetRace: 'zebras' }, 
         cloudSave: { enabled: true, intervalMinutes: 10 },
         // UI状态配置
@@ -72,8 +70,7 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // 深度合并逻辑
-                if (!parsed.eludium) parsed.eludium = defaultConfig.eludium; // 兼容旧档
+                if (!parsed.eludium) parsed.eludium = defaultConfig.eludium;
                 if (!parsed.smartTrade || !parsed.smartTrade.p1) parsed.smartTrade = defaultConfig.smartTrade;
                 if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
@@ -124,7 +121,6 @@
         "zebras": "titanium", "spiders": "coal", "dragons": "uranium", "leviathans": "timeCrystal"
     };
     
-    // [新增] eludium -> unobtainium 映射
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
         catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil',
@@ -149,6 +145,9 @@
     // ==========================================
 
     function createUI() {
+        // 安全检查：如果UI尚未加载，先不执行
+        if (typeof gamePage === 'undefined' || !gamePage.diplomacy || !gamePage.diplomacy.races) return;
+
         const existingPanel = document.getElementById('kg-auto-assist-panel');
         if (existingPanel) existingPanel.remove();
         const existingFab = document.getElementById('kg-auto-assist-fab');
@@ -193,7 +192,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.2 (E合金合成)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.3 (启动优化)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -204,7 +203,7 @@
 
         const contentContainer = document.createElement('div');
 
-        // --- Helper: Create Rows ---
+        // --- Rows ---
         function createControlItem(label, configKey, uiType = 'none') {
             const row = document.createElement('div');
             row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;';
@@ -241,7 +240,7 @@
                     const updatePercentText = (percentVal) => {
                         const resName = capResourceMap[configKey];
                         let actualVal = 'N/A';
-                        try { const resData = gamePage.resPool.get(resName); if (resData) actualVal = Math.floor(resData.maxValue * (percentVal / 100)); } catch (e) {}
+                        try { const resData = gamePage.resPool.get(resName); if (resData && resData.maxValue > 0) actualVal = Math.floor(resData.maxValue * (percentVal / 100)); } catch (e) {}
                         percentText.innerText = `${percentVal}% (${actualVal})`;
                     };
                     updatePercentText(rangeInput.value);
@@ -282,7 +281,6 @@
         contentContainer.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
         contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
-        // [新增] E合金UI
         contentContainer.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
         
@@ -300,7 +298,7 @@
         contentContainer.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
         // ===============================================
-        // 智能级联交易 (Smart Cascade)
+        // 智能级联交易
         // ===============================================
         const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '10px';
         contentContainer.appendChild(hr);
@@ -318,12 +316,10 @@
         stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用级联逻辑'));
         stRow.appendChild(stLabel); contentContainer.appendChild(stRow);
 
-        // --- 优先级行构建器 ---
         function createPriorityRow(label, pKey, isFinal = false) {
             const container = document.createElement('div');
             container.style.cssText = 'margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #555;';
             
-            // 行1: 标题 + 种族选择
             const topRow = document.createElement('div');
             topRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;';
             const lbl = document.createElement('span'); lbl.innerHTML = label; lbl.style.fontSize='11px';
@@ -341,14 +337,11 @@
             }
             raceSelect.value = config.smartTrade[pKey].race;
             
-            topRow.appendChild(lbl);
-            topRow.appendChild(raceSelect);
-            container.appendChild(topRow);
+            topRow.appendChild(lbl); topRow.appendChild(raceSelect); container.appendChild(topRow);
 
             if (!isFinal) {
                 const btmRow = document.createElement('div');
                 btmRow.style.cssText = 'display:flex; align-items:center;';
-                
                 const range = document.createElement('input');
                 range.type = 'range'; range.min = '1'; range.max = '100';
                 range.value = config.smartTrade[pKey].percent;
@@ -362,7 +355,6 @@
                     const pct = parseInt(range.value);
                     config.smartTrade[pKey].race = race;
                     config.smartTrade[pKey].percent = pct;
-                    
                     const resName = RACE_RES_MAP[race] || 'unknown';
                     let actual = 'N/A';
                     if (resName !== 'unknown') {
@@ -387,7 +379,6 @@
             } else {
                 raceSelect.addEventListener('change', () => { config.smartTrade[pKey].race = raceSelect.value; saveConfig(); });
             }
-
             return container;
         }
 
@@ -477,7 +468,7 @@
             
             // 检查 P2 是否已满
             if (isRaceResourceFull(cfg.p2.race, cfg.p2.percent)) {
-                // P2 也满了，直接去 P3 (无需判断 P3 状态)
+                // P2 也满了，直接去 P3
                 targetRace = cfg.p3.race;
             }
         }
@@ -502,7 +493,6 @@
         try {
             const res = gamePage.resPool.get(resName);
             if (!res) return false;
-            // 无上限或上限异常，视为未满
             if (res.maxValue <= 0) return false;
 
             const ratio = res.value / res.maxValue;
@@ -522,8 +512,7 @@
             checkAndCraftThreshold('beam', 'scaffold', 'scaffold');
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
-            // [新增] E合金合成
-            checkAndCraftThreshold('unobtainium', 'eludium', 'eludium');
+            checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); // E合金
 
             runSmartTradeCascade();
 
@@ -607,12 +596,24 @@
     }
 
     function init() {
-        if (window.kgAutoGlobalTimer) clearInterval(window.kgAutoGlobalTimer);
-        Object.values(timers).forEach(clearInterval);
-        createUI();
-        window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
-        Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-        console.log('>>> 🐱 全能小助手 v7.8.2 (E合金合成版) 启动成功！ <<<');
+        // 等待游戏加载检测
+        var checkReady = setInterval(function() {
+            // 只有当 gamePage 对象且其 UI 部分都加载完毕时才启动
+            if (typeof gamePage !== 'undefined' && gamePage.ui && gamePage.resPool) {
+                clearInterval(checkReady);
+                
+                // 停止旧的定时器 (如果有)
+                if (window.kgAutoGlobalTimer) clearInterval(window.kgAutoGlobalTimer);
+                Object.values(timers).forEach(clearInterval);
+                
+                // 启动UI和逻辑
+                createUI();
+                window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
+                Object.keys(tasks).forEach(key => updateSpecificTimer(key));
+                
+                console.log('>>> 🐱 全能小助手 v7.8.3 (启动优化版) 启动成功！ <<<');
+            }
+        }, 1000);
     }
 
     window.stopKgAutoAssist = function() {
@@ -624,5 +625,6 @@
         if (fab) fab.remove();
     };
 
-    setTimeout(init, 5000);
+    // 立即调用 init，让其内部的定时器去等待
+    init();
 })();
