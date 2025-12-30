@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.8 - UI页签重构版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.9 - 修复独角兽版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.8
-// @description  基于v7.8.7改进。保持所有功能（独角兽、铀转钍等）不变，仅将UI重构为页签式（Tabs）布局，界面更整洁。
+// @version      7.8.9
+// @description  基于v7.8.8改进。修复了“自动升级独角兽牧场”不生效的问题（增加了构建参数和更严谨的资源判断）。UI保持页签风格。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.8 (UI页签重构版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.9 (修复独角兽版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -21,7 +21,6 @@
 
     const STORAGE_KEY = 'KG_AutoAssist_Config_v7_8'; 
     const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1';
-    // 新增：保存当前选中的页签索引，改善刷新体验
     const UI_STATE_KEY = 'KG_AutoAssist_UIState';
 
     const defaultConfig = {
@@ -75,12 +74,10 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
-                // 兼容旧档：确保新字段存在
                 if (!parsed.unicornPasture) parsed.unicornPasture = defaultConfig.unicornPasture;
                 if (!parsed.uraniumThorium) parsed.uraniumThorium = defaultConfig.uraniumThorium;
                 if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy;
                 if (!parsed.eludium) parsed.eludium = defaultConfig.eludium;
-                
                 if (!parsed.smartTrade || !parsed.smartTrade.p1) parsed.smartTrade = defaultConfig.smartTrade;
                 if (!parsed.smartHunterGold) parsed.smartHunterGold = defaultConfig.smartHunterGold;
                 if (!parsed.ui) parsed.ui = defaultConfig.ui;
@@ -125,13 +122,11 @@
         return false;
     }
 
-    // --- 资源映射表 ---
     const RACE_RES_MAP = {
         "lizards": "wood", "sharks": "catnip", "griffins": "wood", "nagas": "minerals",
         "zebras": "titanium", "spiders": "coal", "dragons": "uranium", "leviathans": "timeCrystal"
     };
     
-    // 资源名映射 (ConfigKey -> GameResourceName)
     const capResourceMap = { 
         wood: 'wood', minerals: 'minerals', coal: 'coal', iron: 'iron', 
         catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil',
@@ -154,7 +149,7 @@
     }
 
     // ==========================================
-    // 2. 界面构建器 (UI Builder) - Tabs 重构版
+    // 2. 界面构建器 (UI Builder) - Tabs
     // ==========================================
 
     function createUI() {
@@ -178,7 +173,6 @@
         document.body.appendChild(fab);
     }
 
-    // 通用样式注入
     function injectStyles() {
         const styleId = 'kg-assist-styles';
         if (document.getElementById(styleId)) return;
@@ -228,7 +222,7 @@
         // --- Header ---
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: move; background: rgba(255,255,255,0.05); border-bottom: 1px solid #444;';
-        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.8 (Tabs版)</strong>';
+        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.9 (修复版)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -237,7 +231,7 @@
         header.appendChild(closeBtn);
         panel.appendChild(header);
 
-        // --- Tabs Navigation ---
+        // --- Tabs ---
         const tabNav = document.createElement('div');
         tabNav.className = 'kg-tab-nav';
         const tabs = [
@@ -247,7 +241,6 @@
             { id: 'tab-profile', label: '档案管理' }
         ];
         
-        // 创建内容容器
         const contentContainer = document.createElement('div');
         contentContainer.style.padding = '0 12px 12px 12px';
         
@@ -257,12 +250,10 @@
         const tabContents = [];
 
         tabs.forEach((tab, index) => {
-            // Button
             const btn = document.createElement('button');
             btn.className = `kg-tab-btn ${index === activeTabIndex ? 'active' : ''}`;
             btn.innerText = tab.label;
             btn.onclick = () => {
-                // Switch Tabs
                 document.querySelectorAll('.kg-tab-btn').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.kg-tab-content').forEach(c => c.classList.remove('active'));
                 btn.classList.add('active');
@@ -271,7 +262,6 @@
             };
             tabNav.appendChild(btn);
 
-            // Content Div
             const contentDiv = document.createElement('div');
             contentDiv.className = `kg-tab-content ${index === activeTabIndex ? 'active' : ''}`;
             contentDiv.id = tab.id;
@@ -282,7 +272,6 @@
         panel.appendChild(tabNav);
         panel.appendChild(contentContainer);
 
-        // --- Helper Function: Create Control Item ---
         function createControlItem(label, configKey, uiType = 'none') {
             const row = document.createElement('div');
             row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;';
@@ -352,9 +341,6 @@
             return row;
         }
 
-        // ==========================
-        // Populate Tab 1: 资源转化 (Resources)
-        // ==========================
         const t1 = tabContents[0];
         t1.appendChild(createControlItem('木材 -> 木梁 (上限%)', 'wood', 'hybrid'));
         t1.appendChild(createControlItem('矿物 -> 石板 (上限%)', 'minerals', 'hybrid'));
@@ -370,9 +356,6 @@
         t1.appendChild(createControlItem('木梁 -> 脚手架 (固定值)', 'scaffold', 'hybrid'));
         t1.appendChild(createControlItem('毛皮 ->羊皮纸 (固定值)', 'parchment', 'hybrid'));
 
-        // ==========================
-        // Populate Tab 2: 自动活动 (Activities)
-        // ==========================
         const t2 = tabContents[1];
         t2.appendChild(createControlItem('自动点星图', 'starchart'));
         t2.appendChild(createControlItem('自动升级独角兽牧场', 'unicornPasture'));
@@ -387,14 +370,10 @@
         t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
         t2.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
-        // ==========================
-        // Populate Tab 3: 贸易外交 (Trade)
-        // ==========================
         const t3 = tabContents[2];
         t3.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
         t3.appendChild(createControlItem('定时交易 (Timer)', 'autoTrade', 'interval'));
         
-        // Smart Trade Section
         const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '15px';
         t3.appendChild(hr);
 
@@ -411,7 +390,6 @@
         stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用级联逻辑'));
         stRow.appendChild(stLabel); t3.appendChild(stRow);
 
-        // Helper for priority rows (Moved from old createMainPanel)
         function createPriorityRow(label, pKey, isFinal = false) {
             const container = document.createElement('div');
             container.style.cssText = 'margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #555;';
@@ -480,9 +458,6 @@
         stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '10px';
         t3.appendChild(stTip);
 
-        // ==========================
-        // Populate Tab 4: 档案管理 (Profiles)
-        // ==========================
         const t4 = tabContents[3];
         const profileHeader = document.createElement('div');
         profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>';
@@ -518,7 +493,6 @@
 
         document.body.appendChild(panel);
 
-        // UI Dragging
         let isDragging = false; let offsetX, offsetY;
         header.addEventListener('mousedown', (e) => { isDragging = true; offsetX = e.clientX - panel.offsetLeft; offsetY = e.clientY - panel.offsetTop; header.style.cursor = 'grabbing'; });
         document.addEventListener('mousemove', (e) => { if (isDragging) { panel.style.left = (e.clientX - offsetX) + 'px'; panel.style.top = (e.clientY - offsetY) + 'px'; } });
@@ -541,26 +515,16 @@
         } catch (e) {}
     }
 
-    // --- 核心：智能级联逻辑 (优化版) ---
     function runSmartTradeCascade() {
         if (!config.smartTrade.enabled) return;
-        
         const cfg = config.smartTrade;
-        let targetRace = cfg.p1.race; // 默认尝试 P1
-
-        // 检查 P1 是否已满
+        let targetRace = cfg.p1.race; 
         if (isRaceResourceFull(cfg.p1.race, cfg.p1.percent)) {
-            // P1 满了，尝试 P2
             targetRace = cfg.p2.race;
-            
-            // 检查 P2 是否已满
             if (isRaceResourceFull(cfg.p2.race, cfg.p2.percent)) {
-                // P2 也满了，直接去 P3
                 targetRace = cfg.p3.race;
             }
         }
-
-        // 应用目标
         if (targetRace && config.autoTrade.targetRace !== targetRace) {
             const race = gamePage.diplomacy.get(targetRace);
             if (race && race.unlocked) {
@@ -573,46 +537,50 @@
         }
     }
 
-    // 辅助：判断某资源是否“满”了
     function isRaceResourceFull(raceName, thresholdPercent) {
         const resName = RACE_RES_MAP[raceName];
         if (!resName) return false;
         try {
             const res = gamePage.resPool.get(resName);
-            if (!res) return false;
-            if (res.maxValue <= 0) return false;
-
-            const ratio = res.value / res.maxValue;
-            const threshold = thresholdPercent / 100;
-            return ratio >= threshold;
+            if (!res || res.maxValue <= 0) return false;
+            return (res.value / res.maxValue) >= (thresholdPercent / 100);
         } catch(e) { return false; }
     }
 
     function mainLoopTask() {
         if (config.starchart.enabled) { try { const btn = document.getElementById('observeBtn'); if (btn && btn.style.display !== 'none') btn.click(); } catch (e) {} }
 
-        // [新增逻辑] 自动升级独角兽牧场
-        if (config.unicornPasture.enabled) {
-            try {
-                var bld = gamePage.bld.get('unicornPasture');
-                if (bld.unlocked) {
-                    var prices = gamePage.bld.getPrices('unicornPasture');
-                    var canAfford = true;
-                    for (var i = 0; i < prices.length; i++) {
-                        if (gamePage.resPool.get(prices[i].name).value < prices[i].val) {
-                            canAfford = false;
-                            break;
+        // --- 主逻辑与安全检查 ---
+        if (gamePage && gamePage.resPool && gamePage.bld) {
+            
+            // [修复版] 自动升级独角兽牧场 logic (Moved inside safe block)
+            if (config.unicornPasture.enabled) {
+                try {
+                    const bldName = 'unicornPasture';
+                    const bld = gamePage.bld.get(bldName);
+                    // 确保建筑存在且已解锁
+                    if (bld && bld.unlocked) {
+                        const prices = gamePage.bld.getPrices(bldName);
+                        let canAfford = true;
+                        // 检查所有资源是否足够
+                        for (let i = 0; i < prices.length; i++) {
+                            const res = gamePage.resPool.get(prices[i].name);
+                            if (!res || res.value < prices[i].val) {
+                                canAfford = false;
+                                break;
+                            }
+                        }
+                        if (canAfford) {
+                            // 关键修复：传入数量 1
+                            gamePage.bld.build(bldName, 1);
+                            console.log('【自动化】🦄 自动升级独角兽牧场');
                         }
                     }
-                    if (canAfford) {
-                        gamePage.bld.build('unicornPasture');
-                        console.log('【自动化】🦄 自动升级独角兽牧场');
-                    }
+                } catch (e) {
+                    // console.error("独角兽牧场自动化出错:", e);
                 }
-            } catch (e) {}
-        }
+            }
 
-        if (gamePage && gamePage.resPool) {
             checkAndCraftThreshold('wood', 'beam', 'wood');
             checkAndCraftThreshold('minerals', 'slab', 'minerals');
             checkAndCraftThreshold('coal', 'steel', 'coal');
@@ -620,9 +588,9 @@
             checkAndCraftThreshold('beam', 'scaffold', 'scaffold');
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
-            checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); // E合金
-            checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); // 钛->合金
-            checkAndCraftThreshold('uranium', 'thorium', 'uraniumThorium'); // 铀->钍
+            checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); 
+            checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); 
+            checkAndCraftThreshold('uranium', 'thorium', 'uraniumThorium'); 
 
             runSmartTradeCascade();
 
@@ -651,19 +619,15 @@
                 } catch (e) {}
             }
 
-            // 【智能猎人逻辑】
             if (config.smartHunterGold.enabled) {
                 try {
                     const gold = gamePage.resPool.get('gold');
                     const furs = gamePage.resPool.get('furs');
                     const ivory = gamePage.resPool.get('ivory');
-                    
                     if (gold && gold.maxValue > 0) {
                         const isGoldFull = gold.value >= gold.maxValue;
                         const isGoldLow = gold.value < 10000;
-                        // 保底逻辑
                         const isResLow = (furs && furs.value < 1000) || (ivory && ivory.value < 1000);
-                        
                         if (isResLow && !config.hunters.enabled) {
                             config.hunters.enabled = true;
                             updateSpecificTimer('hunters'); saveConfig();
@@ -732,7 +696,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.8 (Tabs版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.9 (修复独角兽版) 启动成功！ <<<');
             }
         }, 1000);
     }
