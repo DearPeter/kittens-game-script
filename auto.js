@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.10 - 独角兽强力修复版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.14 - 独角兽模拟点击版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.10
-// @description  基于v7.8.9改进。彻底修复“自动升级独角兽牧场”不触发的问题（移除解锁状态强校验，优化资源比对逻辑）。UI保持页签风格。
+// @version      7.8.14
+// @description  基于v7.8.13改进。针对“独角兽牧场”自动升级失效问题，采用“所见即所得”的模拟点击策略。脚本会自动识别按钮文字（如“独角兽牧场”）并直接点击界面元素，不再依赖不稳定的内部函数。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.10 (独角兽强力修复版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.14 (模拟点击版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -222,7 +222,7 @@
         // --- Header ---
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: move; background: rgba(255,255,255,0.05); border-bottom: 1px solid #444;';
-        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.10 (修复版)</strong>';
+        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.14 (点击版)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -547,20 +547,39 @@
         } catch(e) { return false; }
     }
 
+    // 辅助：尝试在页面上通过文字找到按钮元素
+    function clickButtonByLabel(labelText) {
+        // 查找所有可能的按钮容器
+        // Kittens Game 的按钮通常在 .btnContent 中
+        // 我们遍历所有 .btnContent，看文本是否包含 labelText
+        const allButtons = document.querySelectorAll('.btnContent');
+        for (let i = 0; i < allButtons.length; i++) {
+            if (allButtons[i].textContent.includes(labelText)) {
+                // 检查是否是禁用的 (unavailable)
+                const container = allButtons[i].closest('.btn');
+                if (container && !container.classList.contains('disabled') && !container.classList.contains('grayed')) {
+                    allButtons[i].click();
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     function mainLoopTask() {
         if (config.starchart.enabled) { try { const btn = document.getElementById('observeBtn'); if (btn && btn.style.display !== 'none') btn.click(); } catch (e) {} }
 
         // --- 主逻辑与安全检查 ---
         if (gamePage && gamePage.resPool && gamePage.bld) {
             
-            // [独角兽牧场-终极修复逻辑]
+            // [独角兽牧场 - 模拟点击版]
             if (config.unicornPasture.enabled) {
                 try {
                     const bldName = 'unicornPasture';
-                    // 不再强制检查 locked/unlocked，防止游戏判定延迟
-                    // 只要能获取到价格，就认为可以购买
+                    // 1. 获取资源判断价格
                     const prices = gamePage.bld.getPrices(bldName);
-                    if (prices) {
+                    
+                    if (prices && prices.length > 0) {
                         let canAfford = true;
                         for (let i = 0; i < prices.length; i++) {
                             const res = gamePage.resPool.get(prices[i].name);
@@ -569,13 +588,24 @@
                                 break;
                             }
                         }
+
                         if (canAfford) {
-                            gamePage.bld.build(bldName, 1);
-                            console.log('【自动化】🦄 自动升级独角兽牧场');
+                            // 2. 尝试模拟点击
+                            // 获取该建筑在游戏里显示的名称（例如“独角兽牧场”）
+                            const bldMeta = gamePage.bld.get(bldName);
+                            const label = bldMeta ? bldMeta.label : 'Unicorn Pasture';
+                            
+                            // 执行点击查找
+                            if (clickButtonByLabel(label)) {
+                                console.log(`【自动化】🦄 自动点击: [${label}]`);
+                            } else {
+                                // 尝试备用英文名
+                                if (label !== 'Unicorn Pasture') clickButtonByLabel('Unicorn Pasture');
+                            }
                         }
                     }
                 } catch (e) {
-                    // 如果出错，静默处理，以免刷屏
+                    console.error('【独角兽错误】:', e);
                 }
             }
 
@@ -694,7 +724,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.10 (独角兽强力修复版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.14 (模拟点击版) 启动成功！ <<<');
             }
         }, 1000);
     }
