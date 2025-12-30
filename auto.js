@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.15 - Google Material UI版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.16 - Google Material UI版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.15
-// @description  基于v7.8.14改进。仅调整UI配色为Google Material风格（明亮、圆角、年轻化），保留独角兽模拟点击等所有核心功能。
+// @version      7.8.16
+// @description  基于v7.8.15改进。添加全局开关功能（一键控制所有自动化）和F12日志功能，保留独角兽模拟点击等所有核心功能。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.15 (Material UI版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.16 (Material UI版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -24,6 +24,7 @@
     const UI_STATE_KEY = 'KG_AutoAssist_UIState';
 
     const defaultConfig = {
+        global: { enabled: true },
         starchart: { enabled: true },
         unicornPasture: { enabled: false }, 
         wood: { enabled: true, type: 'percent', thresholdPercent: 90 },
@@ -62,6 +63,7 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                if (!parsed.global) parsed.global = defaultConfig.global;
                 if (!parsed.unicornPasture) parsed.unicornPasture = defaultConfig.unicornPasture;
                 if (!parsed.uraniumThorium) parsed.uraniumThorium = defaultConfig.uraniumThorium;
                 if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy;
@@ -251,14 +253,62 @@
             background: #ffffff; 
             border-bottom: 1px solid #f1f3f4;
         `;
-        header.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.15</strong>';
-
+        
+        // Title
+        const titleDiv = document.createElement('div');
+        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.16</strong>';
+        
+        // Global Toggle
+        const globalToggleDiv = document.createElement('div');
+        globalToggleDiv.style.cssText = 'display: flex; align-items: center; gap: 8px;';
+        
+        const globalLabel = document.createElement('span');
+        globalLabel.innerText = '全局开关';
+        globalLabel.style.cssText = 'font-size: 13px; color: #5f6368;';
+        
+        const toggleSwitch = document.createElement('label');
+        toggleSwitch.style.cssText = `
+            position: relative; display: inline-block; width: 50px; height: 24px;
+        `;
+        
+        const toggleInput = document.createElement('input');
+        toggleInput.type = 'checkbox';
+        toggleInput.checked = config.global.enabled;
+        toggleInput.style.cssText = 'opacity: 0; width: 0; height: 0;';
+        
+        const toggleSpan = document.createElement('span');
+        toggleSpan.style.cssText = `
+            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+            background-color: ${config.global.enabled ? '#1a73e8' : '#dadce0'};
+            transition: .4s; border-radius: 24px;
+        `;
+        
+        toggleSpan.innerHTML = '<span style="position: absolute; left: 4px; bottom: 4px; width: 16px; height: 16px; background-color: white; transition: .4s; border-radius: 50%; display: inline-block;"></span>';
+        
+        toggleSwitch.appendChild(toggleInput);
+        toggleSwitch.appendChild(toggleSpan);
+        
+        toggleInput.addEventListener('change', function() {
+            config.global.enabled = this.checked;
+            saveConfig();
+            toggleSpan.style.backgroundColor = this.checked ? '#1a73e8' : '#dadce0';
+            const slider = toggleSpan.querySelector('span');
+            slider.style.transform = this.checked ? 'translateX(26px)' : 'translateX(0)';
+        });
+        
+        globalToggleDiv.appendChild(globalLabel);
+        globalToggleDiv.appendChild(toggleSwitch);
+        
+        // Close Button
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
         closeBtn.style.cssText = 'background:none; border:none; color:#5f6368; cursor:pointer; font-size: 16px; padding: 4px; border-radius:50%; transition: background 0.2s;';
         closeBtn.addEventListener('mouseover', () => { closeBtn.style.background = '#f1f3f4'; });
         closeBtn.addEventListener('mouseout', () => { closeBtn.style.background = 'none'; });
         closeBtn.addEventListener('click', () => { config.ui.fabHidden = false; saveConfig(); createUI(); });
+        
+        header.appendChild(titleDiv);
+        header.appendChild(globalToggleDiv);
         header.appendChild(closeBtn);
         panel.appendChild(header);
 
@@ -568,6 +618,7 @@
     const timers = {};
 
     function checkAndCraftThreshold(resName, craftTargetName, configKey) {
+        if (!config.global.enabled) return;
         if (!config[configKey].enabled) return;
         try {
             const actualThreshold = getActualThreshold(configKey);
@@ -578,6 +629,7 @@
     }
 
     function runSmartTradeCascade() {
+        if (!config.global.enabled) return;
         if (!config.smartTrade.enabled) return;
         const cfg = config.smartTrade;
         let targetRace = cfg.p1.race; 
@@ -625,6 +677,11 @@
     }
 
     function mainLoopTask() {
+        // 检查全局开关，如果关闭则跳过所有自动化任务
+        if (!config.global.enabled) {
+            return;
+        }
+        
         if (config.starchart.enabled) { try { const btn = document.getElementById('observeBtn'); if (btn && btn.style.display !== 'none') btn.click(); } catch (e) {} }
 
         // --- 主逻辑与安全检查 ---
@@ -736,12 +793,13 @@
     }
 
     const tasks = {
-        hunters: () => { try { if (gamePage.village.huntAll) { gamePage.village.huntAll(); console.log(`【自动化】✅ 派出猎人`); } } catch (e) {} },
-        praise: () => { try { if (gamePage.resPool.get('faith').value > 0) { gamePage.religion.praise(); console.log(`【自动化】☀️ 赞美太阳`); } } catch (e) {} },
-        manuscript: () => { try { gamePage.craftAll('manuscript'); console.log(`【自动化】📜 合成手稿`); } catch (e) {} },
-        compendium: () => { try { gamePage.craftAll('compedium'); console.log(`【自动化】📚 合成概要`); } catch (e) {} },
-        blueprint: () => { try { gamePage.craftAll('blueprint'); console.log(`【自动化】📘 合成蓝图`); } catch (e) {} },
+        hunters: () => { if (!config.global.enabled) return; try { if (gamePage.village.huntAll) { gamePage.village.huntAll(); console.log(`【自动化】✅ 派出猎人`); } } catch (e) {} },
+        praise: () => { if (!config.global.enabled) return; try { if (gamePage.resPool.get('faith').value > 0) { gamePage.religion.praise(); console.log(`【自动化】☀️ 赞美太阳`); } } catch (e) {} },
+        manuscript: () => { if (!config.global.enabled) return; try { gamePage.craftAll('manuscript'); console.log(`【自动化】📜 合成手稿`); } catch (e) {} },
+        compendium: () => { if (!config.global.enabled) return; try { gamePage.craftAll('compedium'); console.log(`【自动化】📚 合成概要`); } catch (e) {} },
+        blueprint: () => { if (!config.global.enabled) return; try { gamePage.craftAll('blueprint'); console.log(`【自动化】📘 合成蓝图`); } catch (e) {} },
         autoTrade: () => {
+            if (!config.global.enabled) return;
             const targetId = config.autoTrade.targetRace;
             if (!targetId || !gamePage.diplomacy) return;
             try {
@@ -753,6 +811,7 @@
             } catch (e) { console.error(`交易出错:`, e); }
         },
         cloudSave: () => {
+             if (!config.global.enabled) return;
              if (!config.cloudSave.enabled) return;
              const cloudBtn = document.getElementById('cloudSaveBtn');
              if (cloudBtn && cloudBtn.offsetParent !== null) {
@@ -779,7 +838,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.15 (Material UI版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.16 (Material UI版) 启动成功！ <<<');
             }
         }, 1000);
     }
@@ -794,6 +853,20 @@
         const style = document.getElementById('kg-assist-styles');
         if (style) style.remove();
     };
+
+    // 添加F12键日志功能
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'F12') {
+            console.log('【小助手日志】🔍 全局开关状态:', config.global.enabled);
+            console.log('【小助手日志】🔍 配置信息:', config);
+            console.log('【小助手日志】🔍 游戏状态:', {
+                resources: gamePage ? Object.fromEntries(Object.entries(gamePage.resPool.data).map(([k, v]) => [k, { current: v.value, max: v.maxValue }])) : '未初始化',
+                buildings: gamePage ? Object.fromEntries(Object.entries(gamePage.bld.buildings).map(([k, v]) => [k, v.count])) : '未初始化'
+            });
+            console.log('【小助手日志】🔍 定时器状态:', timers);
+            event.preventDefault();
+        }
+    });
 
     init();
 })();
