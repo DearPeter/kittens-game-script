@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.9 - 修复独角兽版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.10 - 独角兽强力修复版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.9
-// @description  基于v7.8.8改进。修复了“自动升级独角兽牧场”不生效的问题（增加了构建参数和更严谨的资源判断）。UI保持页签风格。
+// @version      7.8.10
+// @description  基于v7.8.9改进。彻底修复“自动升级独角兽牧场”不触发的问题（移除解锁状态强校验，优化资源比对逻辑）。UI保持页签风格。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.9 (修复独角兽版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.10 (独角兽强力修复版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -34,9 +34,9 @@
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
         // 特殊合成
-        eludium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // E合金
-        titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 }, // 钛->合金
-        uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // 铀->钍
+        eludium: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 },
+        uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 },
         
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
@@ -222,7 +222,7 @@
         // --- Header ---
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: move; background: rgba(255,255,255,0.05); border-bottom: 1px solid #444;';
-        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.9 (修复版)</strong>';
+        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.10 (修复版)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -553,16 +553,15 @@
         // --- 主逻辑与安全检查 ---
         if (gamePage && gamePage.resPool && gamePage.bld) {
             
-            // [修复版] 自动升级独角兽牧场 logic (Moved inside safe block)
+            // [独角兽牧场-终极修复逻辑]
             if (config.unicornPasture.enabled) {
                 try {
                     const bldName = 'unicornPasture';
-                    const bld = gamePage.bld.get(bldName);
-                    // 确保建筑存在且已解锁
-                    if (bld && bld.unlocked) {
-                        const prices = gamePage.bld.getPrices(bldName);
+                    // 不再强制检查 locked/unlocked，防止游戏判定延迟
+                    // 只要能获取到价格，就认为可以购买
+                    const prices = gamePage.bld.getPrices(bldName);
+                    if (prices) {
                         let canAfford = true;
-                        // 检查所有资源是否足够
                         for (let i = 0; i < prices.length; i++) {
                             const res = gamePage.resPool.get(prices[i].name);
                             if (!res || res.value < prices[i].val) {
@@ -571,13 +570,12 @@
                             }
                         }
                         if (canAfford) {
-                            // 关键修复：传入数量 1
                             gamePage.bld.build(bldName, 1);
                             console.log('【自动化】🦄 自动升级独角兽牧场');
                         }
                     }
                 } catch (e) {
-                    // console.error("独角兽牧场自动化出错:", e);
+                    // 如果出错，静默处理，以免刷屏
                 }
             }
 
@@ -696,7 +694,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.9 (修复独角兽版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.10 (独角兽强力修复版) 启动成功！ <<<');
             }
         }, 1000);
     }
