@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.7 - 独角兽牧场版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.8 - UI页签重构版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.7
-// @description  基于v7.8.6改进。新增功能：自动升级独角兽牧场 (Unicorn Pasture)。保持铀转钍、钛转合金、智能猎人等所有原有功能不变。
+// @version      7.8.8
+// @description  基于v7.8.7改进。保持所有功能（独角兽、铀转钍等）不变，仅将UI重构为页签式（Tabs）布局，界面更整洁。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.7 (独角兽牧场版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.8 (UI页签重构版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -21,10 +21,12 @@
 
     const STORAGE_KEY = 'KG_AutoAssist_Config_v7_8'; 
     const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1';
+    // 新增：保存当前选中的页签索引，改善刷新体验
+    const UI_STATE_KEY = 'KG_AutoAssist_UIState';
 
     const defaultConfig = {
         starchart: { enabled: true },
-        unicornPasture: { enabled: false }, // [新增] 自动升级独角兽牧场
+        unicornPasture: { enabled: false }, // 自动升级独角兽牧场
         // --- 百分比类 ---
         wood: { enabled: true, type: 'percent', thresholdPercent: 90 },
         minerals: { enabled: true, type: 'percent', thresholdPercent: 90 },
@@ -74,7 +76,7 @@
             if (saved) {
                 const parsed = JSON.parse(saved);
                 // 兼容旧档：确保新字段存在
-                if (!parsed.unicornPasture) parsed.unicornPasture = defaultConfig.unicornPasture; // [新增]
+                if (!parsed.unicornPasture) parsed.unicornPasture = defaultConfig.unicornPasture;
                 if (!parsed.uraniumThorium) parsed.uraniumThorium = defaultConfig.uraniumThorium;
                 if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy;
                 if (!parsed.eludium) parsed.eludium = defaultConfig.eludium;
@@ -152,7 +154,7 @@
     }
 
     // ==========================================
-    // 2. 界面构建器 (UI Builder)
+    // 2. 界面构建器 (UI Builder) - Tabs 重构版
     // ==========================================
 
     function createUI() {
@@ -176,7 +178,30 @@
         document.body.appendChild(fab);
     }
 
+    // 通用样式注入
+    function injectStyles() {
+        const styleId = 'kg-assist-styles';
+        if (document.getElementById(styleId)) return;
+        const style = document.createElement('style');
+        style.id = styleId;
+        style.innerHTML = `
+            .kg-tab-nav { display: flex; border-bottom: 1px solid #555; background: rgba(0,0,0,0.3); }
+            .kg-tab-btn { 
+                flex: 1; background: transparent; border: none; color: #aaa; padding: 10px 0; 
+                cursor: pointer; border-bottom: 3px solid transparent; font-size: 12px; font-weight: bold;
+                transition: all 0.2s; outline: none;
+            }
+            .kg-tab-btn:hover { background: rgba(255,255,255,0.05); color: #ccc; }
+            .kg-tab-btn.active { color: #fff; border-bottom: 3px solid #d9534f; background: rgba(255,255,255,0.1); }
+            .kg-tab-content { display: none; padding: 10px 5px; animation: kg-fade 0.2s ease-in-out; }
+            .kg-tab-content.active { display: block; }
+            @keyframes kg-fade { from { opacity: 0; } to { opacity: 1; } }
+        `;
+        document.head.appendChild(style);
+    }
+
     function createMainPanel() {
+        injectStyles();
         const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
         const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
         const panelTotalWidth = 490;
@@ -198,11 +223,12 @@
         const topPos = config.ui.posY !== 'auto' ? config.ui.posY : '20px';
         const leftPos = config.ui.posX !== 'auto' ? config.ui.posX : 'auto';
         const rightPos = config.ui.posX === 'auto' ? '20px' : 'auto';
-        panel.style.cssText = `position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; width: 460px; background-color: rgba(0, 0, 0, 0.9); color: #eee; border: 1px solid #555; border-radius: 8px; padding: 12px; z-index: 9999; font-family: sans-serif; font-size: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.5);`;
+        panel.style.cssText = `position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; width: 460px; background-color: rgba(0, 0, 0, 0.9); color: #eee; border: 1px solid #555; border-radius: 8px; z-index: 9999; font-family: sans-serif; font-size: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.5); overflow: hidden;`;
 
+        // --- Header ---
         const header = document.createElement('div');
-        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.7 (独角兽版)</strong>';
+        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: move; background: rgba(255,255,255,0.05); border-bottom: 1px solid #444;';
+        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.8 (Tabs版)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -211,9 +237,52 @@
         header.appendChild(closeBtn);
         panel.appendChild(header);
 
+        // --- Tabs Navigation ---
+        const tabNav = document.createElement('div');
+        tabNav.className = 'kg-tab-nav';
+        const tabs = [
+            { id: 'tab-res', label: '资源转化' },
+            { id: 'tab-act', label: '自动活动' },
+            { id: 'tab-trade', label: '贸易外交' },
+            { id: 'tab-profile', label: '档案管理' }
+        ];
+        
+        // 创建内容容器
         const contentContainer = document.createElement('div');
+        contentContainer.style.padding = '0 12px 12px 12px';
+        
+        let activeTabIndex = parseInt(localStorage.getItem(UI_STATE_KEY) || '0');
+        if(activeTabIndex >= tabs.length) activeTabIndex = 0;
 
-        // --- Rows ---
+        const tabContents = [];
+
+        tabs.forEach((tab, index) => {
+            // Button
+            const btn = document.createElement('button');
+            btn.className = `kg-tab-btn ${index === activeTabIndex ? 'active' : ''}`;
+            btn.innerText = tab.label;
+            btn.onclick = () => {
+                // Switch Tabs
+                document.querySelectorAll('.kg-tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.kg-tab-content').forEach(c => c.classList.remove('active'));
+                btn.classList.add('active');
+                tabContents[index].classList.add('active');
+                localStorage.setItem(UI_STATE_KEY, index);
+            };
+            tabNav.appendChild(btn);
+
+            // Content Div
+            const contentDiv = document.createElement('div');
+            contentDiv.className = `kg-tab-content ${index === activeTabIndex ? 'active' : ''}`;
+            contentDiv.id = tab.id;
+            tabContents.push(contentDiv);
+            contentContainer.appendChild(contentDiv);
+        });
+
+        panel.appendChild(tabNav);
+        panel.appendChild(contentContainer);
+
+        // --- Helper Function: Create Control Item ---
         function createControlItem(label, configKey, uiType = 'none') {
             const row = document.createElement('div');
             row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;';
@@ -283,43 +352,56 @@
             return row;
         }
 
-        contentContainer.appendChild(createControlItem('自动点星图', 'starchart'));
-        contentContainer.appendChild(createControlItem('自动升级独角兽牧场', 'unicornPasture')); // [新增UI]
-        contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
-        contentContainer.appendChild(createControlItem('木材 -> 木梁 (上限%)', 'wood', 'hybrid'));
-        contentContainer.appendChild(createControlItem('矿物 -> 石板 (上限%)', 'minerals', 'hybrid'));
-        contentContainer.appendChild(createControlItem('煤炭 -> 钢铁 (上限%)', 'coal', 'hybrid'));
-        contentContainer.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
-        contentContainer.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
-        contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
-        contentContainer.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
-        contentContainer.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); 
-        contentContainer.appendChild(createControlItem('铀 -> 钍 (上限%)', 'uraniumThorium', 'hybrid')); 
-        contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
-        
-        contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
-        contentContainer.appendChild(createControlItem('木梁 -> 脚手架 (固定值)', 'scaffold', 'hybrid'));
-        contentContainer.appendChild(createControlItem('毛皮 ->羊皮纸 (固定值)', 'parchment', 'hybrid'));
-        contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
-        contentContainer.appendChild(createControlItem('自动派猎人', 'hunters', 'interval'));
-        contentContainer.appendChild(createControlItem('智能猎人 (金满停/低开)', 'smartHunterGold'));
-        contentContainer.appendChild(createControlItem('自动赞美太阳', 'praise', 'interval'));
-        contentContainer.appendChild(createControlItem('定时合手稿', 'manuscript', 'interval'));
-        contentContainer.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
-        contentContainer.appendChild(createControlItem('定时合蓝图', 'blueprint', 'interval'));
-        contentContainer.appendChild(createControlItem('定时交易 (Timer)', 'autoTrade', 'interval'));
-        contentContainer.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
+        // ==========================
+        // Populate Tab 1: 资源转化 (Resources)
+        // ==========================
+        const t1 = tabContents[0];
+        t1.appendChild(createControlItem('木材 -> 木梁 (上限%)', 'wood', 'hybrid'));
+        t1.appendChild(createControlItem('矿物 -> 石板 (上限%)', 'minerals', 'hybrid'));
+        t1.appendChild(createControlItem('煤炭 -> 钢铁 (上限%)', 'coal', 'hybrid'));
+        t1.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
+        t1.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
+        t1.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
+        t1.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t1.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
+        t1.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); 
+        t1.appendChild(createControlItem('铀 -> 钍 (上限%)', 'uraniumThorium', 'hybrid')); 
+        t1.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t1.appendChild(createControlItem('木梁 -> 脚手架 (固定值)', 'scaffold', 'hybrid'));
+        t1.appendChild(createControlItem('毛皮 ->羊皮纸 (固定值)', 'parchment', 'hybrid'));
 
-        // ===============================================
-        // 智能级联交易
-        // ===============================================
-        const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '10px';
-        contentContainer.appendChild(hr);
+        // ==========================
+        // Populate Tab 2: 自动活动 (Activities)
+        // ==========================
+        const t2 = tabContents[1];
+        t2.appendChild(createControlItem('自动点星图', 'starchart'));
+        t2.appendChild(createControlItem('自动升级独角兽牧场', 'unicornPasture'));
+        t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t2.appendChild(createControlItem('自动派猎人 (Timer)', 'hunters', 'interval'));
+        t2.appendChild(createControlItem('智能猎人 (金满停/低开)', 'smartHunterGold'));
+        t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t2.appendChild(createControlItem('自动赞美太阳 (Timer)', 'praise', 'interval'));
+        t2.appendChild(createControlItem('定时合手稿', 'manuscript', 'interval'));
+        t2.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
+        t2.appendChild(createControlItem('定时合蓝图', 'blueprint', 'interval'));
+        t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t2.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
+
+        // ==========================
+        // Populate Tab 3: 贸易外交 (Trade)
+        // ==========================
+        const t3 = tabContents[2];
+        t3.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
+        t3.appendChild(createControlItem('定时交易 (Timer)', 'autoTrade', 'interval'));
+        
+        // Smart Trade Section
+        const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '15px';
+        t3.appendChild(hr);
 
         const tradeHeader = document.createElement('div');
         tradeHeader.innerHTML = '<strong>智能级联交易 (Smart Cascade)</strong>';
         tradeHeader.style.marginBottom = '5px'; tradeHeader.style.color = '#ffdb4d';
-        contentContainer.appendChild(tradeHeader);
+        t3.appendChild(tradeHeader);
 
         const stRow = document.createElement('div');
         stRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;';
@@ -327,16 +409,15 @@
         const stCb = document.createElement('input'); stCb.type = 'checkbox'; stCb.checked = config.smartTrade.enabled; stCb.style.marginRight = '8px';
         stCb.addEventListener('change', (e) => { config.smartTrade.enabled = e.target.checked; saveConfig(); });
         stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用级联逻辑'));
-        stRow.appendChild(stLabel); contentContainer.appendChild(stRow);
+        stRow.appendChild(stLabel); t3.appendChild(stRow);
 
+        // Helper for priority rows (Moved from old createMainPanel)
         function createPriorityRow(label, pKey, isFinal = false) {
             const container = document.createElement('div');
             container.style.cssText = 'margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #555;';
-            
             const topRow = document.createElement('div');
             topRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;';
             const lbl = document.createElement('span'); lbl.innerHTML = label; lbl.style.fontSize='11px';
-            
             const raceSelect = document.createElement('select');
             raceSelect.style.cssText = 'width: 100px; background: #333; color: #eee; border: 1px solid #444; font-size: 11px;';
             if (gamePage.diplomacy && gamePage.diplomacy.races) {
@@ -349,7 +430,6 @@
                 });
             }
             raceSelect.value = config.smartTrade[pKey].race;
-            
             topRow.appendChild(lbl); topRow.appendChild(raceSelect); container.appendChild(topRow);
 
             if (!isFinal) {
@@ -359,10 +439,8 @@
                 range.type = 'range'; range.min = '1'; range.max = '100';
                 range.value = config.smartTrade[pKey].percent;
                 range.style.cssText = 'flex-grow:1; height:5px; background:#555; cursor:pointer; margin-right:5px;';
-                
                 const valDisplay = document.createElement('span');
                 valDisplay.style.cssText = 'font-size:10px; color:#aaa; width: 140px; text-align:right; white-space:nowrap;';
-
                 const updateDisplay = () => {
                     const race = raceSelect.value;
                     const pct = parseInt(range.value);
@@ -383,7 +461,6 @@
                     let resLabel = resName === 'unknown' ? '' : ` (${resName})`;
                     valDisplay.innerText = `${pct}% ${resLabel} ≈ ${actual}`;
                 };
-
                 raceSelect.addEventListener('change', () => { updateDisplay(); saveConfig(); });
                 range.addEventListener('input', () => { updateDisplay(); saveConfig(); });
                 updateDisplay();
@@ -395,24 +472,22 @@
             return container;
         }
 
-        contentContainer.appendChild(createPriorityRow("优先级 1 (P1):", 'p1'));
-        contentContainer.appendChild(createPriorityRow("优先级 2 (P2):", 'p2'));
-        contentContainer.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); 
-        
+        t3.appendChild(createPriorityRow("优先级 1 (P1):", 'p1'));
+        t3.appendChild(createPriorityRow("优先级 2 (P2):", 'p2'));
+        t3.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); 
         const stTip = document.createElement('div');
         stTip.innerText = "* 逻辑: P1满 -> P2, P2满 -> P3\n* P3 无需设置阈值";
         stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '10px';
-        contentContainer.appendChild(stTip);
+        t3.appendChild(stTip);
 
-        // --- 档案管理 ---
-        const hrProfile = document.createElement('hr'); 
-        hrProfile.style.borderColor = '#666'; hrProfile.style.marginTop = '15px';
-        contentContainer.appendChild(hrProfile);
-
+        // ==========================
+        // Populate Tab 4: 档案管理 (Profiles)
+        // ==========================
+        const t4 = tabContents[3];
         const profileHeader = document.createElement('div');
         profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>';
         profileHeader.style.marginBottom = '8px'; profileHeader.style.color = '#88ccff';
-        contentContainer.appendChild(profileHeader);
+        t4.appendChild(profileHeader);
 
         const saveRow = document.createElement('div');
         saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:8px;';
@@ -422,7 +497,7 @@
         saveBtn.innerText = '保存'; saveBtn.style.cssText = 'background:#447744; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
         saveBtn.addEventListener('click', () => { if (saveProfile(nameInput.value)) { alert(`✅ [${nameInput.value}] 保存成功`); createUI(); } });
         saveRow.appendChild(nameInput); saveRow.appendChild(saveBtn);
-        contentContainer.appendChild(saveRow);
+        t4.appendChild(saveRow);
 
         const loadRow = document.createElement('div');
         loadRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
@@ -439,9 +514,8 @@
         delBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`删除 [${profileSelect.value}]?`)) { deleteProfile(profileSelect.value); createUI(); } });
         
         loadRow.appendChild(profileSelect); loadRow.appendChild(loadBtn); loadRow.appendChild(delBtn);
-        contentContainer.appendChild(loadRow);
+        t4.appendChild(loadRow);
 
-        panel.appendChild(contentContainer);
         document.body.appendChild(panel);
 
         // UI Dragging
@@ -658,7 +732,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.7 (独角兽牧场版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.8 (Tabs版) 启动成功！ <<<');
             }
         }, 1000);
     }
@@ -670,6 +744,8 @@
         if (panel) panel.remove();
         const fab = document.getElementById('kg-auto-assist-fab');
         if (fab) fab.remove();
+        const style = document.getElementById('kg-assist-styles');
+        if (style) style.remove();
     };
 
     init();
