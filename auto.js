@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.6 - 铀转钍)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.7 - 独角兽牧场版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.6
-// @description  基于v7.8.5改进。新增功能：铀 -> 钍 (Thorium) 的自动合成（基于存储上限百分比阈值），防止铀溢出。保持钛转合金、智能猎人等所有原有功能不变。
+// @version      7.8.7
+// @description  基于v7.8.6改进。新增功能：自动升级独角兽牧场 (Unicorn Pasture)。保持铀转钍、钛转合金、智能猎人等所有原有功能不变。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.6 (铀转钍版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.7 (独角兽牧场版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -24,6 +24,7 @@
 
     const defaultConfig = {
         starchart: { enabled: true },
+        unicornPasture: { enabled: false }, // [新增] 自动升级独角兽牧场
         // --- 百分比类 ---
         wood: { enabled: true, type: 'percent', thresholdPercent: 90 },
         minerals: { enabled: true, type: 'percent', thresholdPercent: 90 },
@@ -34,7 +35,7 @@
         // 特殊合成
         eludium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // E合金
         titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 }, // 钛->合金
-        uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // [新增] 铀->钍
+        uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 }, // 铀->钍
         
         // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
@@ -73,7 +74,8 @@
             if (saved) {
                 const parsed = JSON.parse(saved);
                 // 兼容旧档：确保新字段存在
-                if (!parsed.uraniumThorium) parsed.uraniumThorium = defaultConfig.uraniumThorium; // [新增]
+                if (!parsed.unicornPasture) parsed.unicornPasture = defaultConfig.unicornPasture; // [新增]
+                if (!parsed.uraniumThorium) parsed.uraniumThorium = defaultConfig.uraniumThorium;
                 if (!parsed.titaniumAlloy) parsed.titaniumAlloy = defaultConfig.titaniumAlloy;
                 if (!parsed.eludium) parsed.eludium = defaultConfig.eludium;
                 
@@ -133,7 +135,7 @@
         catnipWood: 'catnip', emergencyTradeCatnip: 'catnip', oilKerosene: 'oil',
         eludium: 'unobtainium',
         titaniumAlloy: 'titanium',
-        uraniumThorium: 'uranium' // [新增] 监控铀资源
+        uraniumThorium: 'uranium' 
     };
 
     function getActualThreshold(configKey) {
@@ -200,7 +202,7 @@
 
         const header = document.createElement('div');
         header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; border-bottom: 1px solid #444; padding-bottom: 8px;';
-        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.6 (铀转钍)</strong>';
+        header.innerHTML = '<strong style="font-size:15px;">🐱 小助手 v7.8.7 (独角兽版)</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
@@ -282,6 +284,7 @@
         }
 
         contentContainer.appendChild(createControlItem('自动点星图', 'starchart'));
+        contentContainer.appendChild(createControlItem('自动升级独角兽牧场', 'unicornPasture')); // [新增UI]
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
         contentContainer.appendChild(createControlItem('木材 -> 木梁 (上限%)', 'wood', 'hybrid'));
         contentContainer.appendChild(createControlItem('矿物 -> 石板 (上限%)', 'minerals', 'hybrid'));
@@ -291,7 +294,7 @@
         contentContainer.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
         contentContainer.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
         contentContainer.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); 
-        contentContainer.appendChild(createControlItem('铀 -> 钍 (上限%)', 'uraniumThorium', 'hybrid')); // [新增UI]
+        contentContainer.appendChild(createControlItem('铀 -> 钍 (上限%)', 'uraniumThorium', 'hybrid')); 
         contentContainer.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
         
         contentContainer.appendChild(document.createElement('hr')).style.borderColor = '#444';
@@ -514,6 +517,27 @@
     function mainLoopTask() {
         if (config.starchart.enabled) { try { const btn = document.getElementById('observeBtn'); if (btn && btn.style.display !== 'none') btn.click(); } catch (e) {} }
 
+        // [新增逻辑] 自动升级独角兽牧场
+        if (config.unicornPasture.enabled) {
+            try {
+                var bld = gamePage.bld.get('unicornPasture');
+                if (bld.unlocked) {
+                    var prices = gamePage.bld.getPrices('unicornPasture');
+                    var canAfford = true;
+                    for (var i = 0; i < prices.length; i++) {
+                        if (gamePage.resPool.get(prices[i].name).value < prices[i].val) {
+                            canAfford = false;
+                            break;
+                        }
+                    }
+                    if (canAfford) {
+                        gamePage.bld.build('unicornPasture');
+                        console.log('【自动化】🦄 自动升级独角兽牧场');
+                    }
+                }
+            } catch (e) {}
+        }
+
         if (gamePage && gamePage.resPool) {
             checkAndCraftThreshold('wood', 'beam', 'wood');
             checkAndCraftThreshold('minerals', 'slab', 'minerals');
@@ -524,7 +548,7 @@
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
             checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); // E合金
             checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); // 钛->合金
-            checkAndCraftThreshold('uranium', 'thorium', 'uraniumThorium'); // [新增] 铀->钍
+            checkAndCraftThreshold('uranium', 'thorium', 'uraniumThorium'); // 铀->钍
 
             runSmartTradeCascade();
 
@@ -634,7 +658,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.6 (铀转钍版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.7 (独角兽牧场版) 启动成功！ <<<');
             }
         }, 1000);
     }
