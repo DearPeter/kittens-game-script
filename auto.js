@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.14 - 独角兽模拟点击版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.15 - Google Material UI版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.14
-// @description  基于v7.8.13改进。针对“独角兽牧场”自动升级失效问题，采用“所见即所得”的模拟点击策略。脚本会自动识别按钮文字（如“独角兽牧场”）并直接点击界面元素，不再依赖不稳定的内部函数。
+// @version      7.8.15
+// @description  基于v7.8.14改进。仅调整UI配色为Google Material风格（明亮、圆角、年轻化），保留独角兽模拟点击等所有核心功能。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.14 (模拟点击版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.15 (Material UI版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -25,37 +25,26 @@
 
     const defaultConfig = {
         starchart: { enabled: true },
-        unicornPasture: { enabled: false }, // 自动升级独角兽牧场
-        // --- 百分比类 ---
+        unicornPasture: { enabled: false }, 
         wood: { enabled: true, type: 'percent', thresholdPercent: 90 },
         minerals: { enabled: true, type: 'percent', thresholdPercent: 90 },
         coal: { enabled: true, type: 'percent', thresholdPercent: 90 },
         iron: { enabled: true, type: 'percent', thresholdPercent: 90 },
         catnipWood: { enabled: false, type: 'percent', thresholdPercent: 90 },
         oilKerosene: { enabled: false, type: 'percent', thresholdPercent: 90 },
-        // 特殊合成
         eludium: { enabled: false, type: 'percent', thresholdPercent: 90 },
         titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 },
         uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 },
-        
-        // --- 智能控制类 ---
         smartHunterGold: { enabled: false }, 
-
-        // --- 智能级联交易 ---
         smartTrade: { 
             enabled: false,
             p1: { race: 'dragons', percent: 95 },
             p2: { race: 'zebras', percent: 90 },
             p3: { race: 'sharks', percent: 0 } 
         },
-
-        // --- 百分比类 (下限紧急交易) ---
         emergencyTradeCatnip: { enabled: false, type: 'percent', thresholdPercent: 60 },
-
-        // --- 固定值类 ---
         parchment: { enabled: true, type: 'fixed', thresholdFixed: 15000 },
         scaffold: { enabled: false, type: 'fixed', thresholdFixed: 10000 },
-        // --- 定时任务类 ---
         hunters: { enabled: true, intervalMinutes: 5 },
         praise: { enabled: true, intervalMinutes: 60 },
         manuscript: { enabled: true, intervalMinutes: 3 },
@@ -63,7 +52,6 @@
         blueprint: { enabled: false, intervalMinutes: 60 },
         autoTrade: { enabled: false, intervalMinutes: 20, targetRace: 'zebras' }, 
         cloudSave: { enabled: true, intervalMinutes: 10 },
-        // UI状态配置
         ui: { fabHidden: false, posX: 'auto', posY: '20px' }
     };
 
@@ -149,7 +137,7 @@
     }
 
     // ==========================================
-    // 2. 界面构建器 (UI Builder) - Tabs
+    // 2. 界面构建器 (UI Builder) - Material Style
     // ==========================================
 
     function createUI() {
@@ -166,9 +154,23 @@
     function createFAB() {
         const fab = document.createElement('div');
         fab.id = 'kg-auto-assist-fab';
-        fab.style.cssText = `position: fixed; bottom: 30px; right: 30px; width: 45px; height: 45px; background-color: rgba(0, 0, 0, 0.6); color: #eee; border-radius: 50%; text-align: center; line-height: 45px; font-size: 22px; cursor: pointer; z-index: 2147483647; user-select: none; box-shadow: 0 3px 8px rgba(0,0,0,0.4); transition: all 0.3s ease; border: 1px solid rgba(255,255,255,0.2);`;
+        // Material Style FAB: Blue background, White icon, Shadow
+        fab.style.cssText = `
+            position: fixed; bottom: 30px; right: 30px; 
+            width: 50px; height: 50px; 
+            background-color: #1a73e8; color: #fff; 
+            border-radius: 50%; 
+            text-align: center; line-height: 50px; font-size: 24px; 
+            cursor: pointer; z-index: 2147483647; user-select: none; 
+            box-shadow: 0 4px 12px rgba(26,115,232,0.4); 
+            transition: all 0.3s ease; border: none;
+        `;
         fab.innerHTML = '🐱';
-        fab.title = '点击打开全能小助手面板';
+        fab.title = '点击打开全能小助手';
+        // Hover effect
+        fab.addEventListener('mouseover', () => { fab.style.transform = 'scale(1.1)'; fab.style.boxShadow = '0 6px 16px rgba(26,115,232,0.5)'; });
+        fab.addEventListener('mouseout', () => { fab.style.transform = 'scale(1)'; fab.style.boxShadow = '0 4px 12px rgba(26,115,232,0.4)'; });
+        
         fab.addEventListener('click', () => { config.ui.fabHidden = true; saveConfig(); createUI(); });
         document.body.appendChild(fab);
     }
@@ -178,18 +180,25 @@
         if (document.getElementById(styleId)) return;
         const style = document.createElement('style');
         style.id = styleId;
+        // Material Google-ish Styles
         style.innerHTML = `
-            .kg-tab-nav { display: flex; border-bottom: 1px solid #555; background: rgba(0,0,0,0.3); }
+            .kg-tab-nav { display: flex; border-bottom: 1px solid #e0e0e0; background: transparent; padding: 0 8px; }
             .kg-tab-btn { 
-                flex: 1; background: transparent; border: none; color: #aaa; padding: 10px 0; 
-                cursor: pointer; border-bottom: 3px solid transparent; font-size: 12px; font-weight: bold;
-                transition: all 0.2s; outline: none;
+                flex: 1; background: transparent; border: none; color: #5f6368; 
+                padding: 12px 0; cursor: pointer; border-bottom: 3px solid transparent; 
+                font-size: 13px; font-weight: 500; font-family: 'Roboto', 'Segoe UI', sans-serif;
+                transition: all 0.2s; outline: none; border-radius: 4px 4px 0 0;
             }
-            .kg-tab-btn:hover { background: rgba(255,255,255,0.05); color: #ccc; }
-            .kg-tab-btn.active { color: #fff; border-bottom: 3px solid #d9534f; background: rgba(255,255,255,0.1); }
-            .kg-tab-content { display: none; padding: 10px 5px; animation: kg-fade 0.2s ease-in-out; }
+            .kg-tab-btn:hover { background: #f1f3f4; color: #202124; }
+            .kg-tab-btn.active { color: #1a73e8; border-bottom: 3px solid #1a73e8; background: #e8f0fe; }
+            .kg-tab-content { display: none; padding: 16px 8px; animation: kg-fade 0.2s ease-in-out; }
             .kg-tab-content.active { display: block; }
-            @keyframes kg-fade { from { opacity: 0; } to { opacity: 1; } }
+            @keyframes kg-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+            
+            /* Custom Scrollbar for panel content if needed */
+            #kg-auto-assist-panel ::-webkit-scrollbar { width: 6px; }
+            #kg-auto-assist-panel ::-webkit-scrollbar-thumb { background: #dadce0; border-radius: 3px; }
+            #kg-auto-assist-panel ::-webkit-scrollbar-thumb:hover { background: #bdc1c6; }
         `;
         document.head.appendChild(style);
     }
@@ -217,16 +226,38 @@
         const topPos = config.ui.posY !== 'auto' ? config.ui.posY : '20px';
         const leftPos = config.ui.posX !== 'auto' ? config.ui.posX : 'auto';
         const rightPos = config.ui.posX === 'auto' ? '20px' : 'auto';
-        panel.style.cssText = `position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; width: 460px; background-color: rgba(0, 0, 0, 0.9); color: #eee; border: 1px solid #555; border-radius: 8px; z-index: 9999; font-family: sans-serif; font-size: 12px; box-shadow: 0 6px 12px rgba(0,0,0,0.5); overflow: hidden;`;
+        
+        // Material Card Style: White bg, soft shadow, rounded corners
+        panel.style.cssText = `
+            position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; 
+            width: 460px; 
+            background-color: #ffffff; 
+            color: #3c4043; 
+            border: none; 
+            border-radius: 16px; 
+            z-index: 9999; 
+            font-family: 'Roboto', 'Segoe UI', Arial, sans-serif; 
+            font-size: 13px; 
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
+            overflow: hidden;
+            transition: box-shadow 0.3s;
+        `;
 
         // --- Header ---
         const header = document.createElement('div');
-        header.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; cursor: move; background: rgba(255,255,255,0.05); border-bottom: 1px solid #444;';
-        header.innerHTML = '<strong style="font-size:14px;">🐱 小助手 v7.8.14 (点击版)</strong>';
+        header.style.cssText = `
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 12px 16px; cursor: move; 
+            background: #ffffff; 
+            border-bottom: 1px solid #f1f3f4;
+        `;
+        header.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.15</strong>';
 
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '✖';
-        closeBtn.style.cssText = 'background:none; border:none; color:#aaa; cursor:pointer; font-size: 14px;';
+        closeBtn.style.cssText = 'background:none; border:none; color:#5f6368; cursor:pointer; font-size: 16px; padding: 4px; border-radius:50%; transition: background 0.2s;';
+        closeBtn.addEventListener('mouseover', () => { closeBtn.style.background = '#f1f3f4'; });
+        closeBtn.addEventListener('mouseout', () => { closeBtn.style.background = 'none'; });
         closeBtn.addEventListener('click', () => { config.ui.fabHidden = false; saveConfig(); createUI(); });
         header.appendChild(closeBtn);
         panel.appendChild(header);
@@ -242,7 +273,8 @@
         ];
         
         const contentContainer = document.createElement('div');
-        contentContainer.style.padding = '0 12px 12px 12px';
+        contentContainer.style.padding = '0 8px 8px 8px';
+        contentContainer.style.background = '#ffffff'; // Ensure content bg is white
         
         let activeTabIndex = parseInt(localStorage.getItem(UI_STATE_KEY) || '0');
         if(activeTabIndex >= tabs.length) activeTabIndex = 0;
@@ -274,17 +306,18 @@
 
         function createControlItem(label, configKey, uiType = 'none') {
             const row = document.createElement('div');
-            row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;';
+            row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 2px 4px;';
             const isInterval = uiType === 'interval';
             const isHybridThreshold = uiType === 'hybrid';
             const isAutoTrade = configKey === 'autoTrade';
 
             const leftSide = document.createElement('label');
-            leftSide.style.cssText = 'display: flex; align-items: center; cursor: pointer; flex-grow: 1;';
+            leftSide.style.cssText = 'display: flex; align-items: center; cursor: pointer; flex-grow: 1; color: #3c4043; font-weight: 400;';
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.checked = config[configKey].enabled;
-            checkbox.style.marginRight = '8px';
+            checkbox.style.marginRight = '10px';
+            checkbox.style.accentColor = '#1a73e8'; // Google Blue Checkbox
             checkbox.id = 'kg-assist-cb-' + configKey;
             checkbox.addEventListener('change', (e) => { config[configKey].enabled = e.target.checked; saveConfig(); if (isInterval) updateSpecificTimer(configKey); });
             leftSide.appendChild(checkbox);
@@ -294,6 +327,13 @@
             const rightSide = document.createElement('div');
             rightSide.style.cssText = 'display: flex; align-items: center; justify-content: flex-end;';
 
+            // Common Input Style
+            const inputStyle = 'background: #f1f3f4; color: #202124; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; font-family: inherit; font-size: 12px; transition: 0.2s; outline: none;';
+            const inputFocus = (el) => {
+                el.addEventListener('focus', () => { el.style.background = '#ffffff'; el.style.border = '1px solid #1a73e8'; el.style.boxShadow = '0 0 0 2px rgba(26,115,232,0.2)'; });
+                el.addEventListener('blur', () => { el.style.background = '#f1f3f4'; el.style.border = '1px solid transparent'; el.style.boxShadow = 'none'; });
+            };
+
             if (isHybridThreshold) {
                 const itemType = config[configKey].type;
                 if (itemType === 'percent') {
@@ -302,9 +342,10 @@
                     const rangeInput = document.createElement('input');
                     rangeInput.type = 'range'; rangeInput.min = '1'; rangeInput.max = '100';
                     rangeInput.value = config[configKey].thresholdPercent;
-                    rangeInput.style.cssText = 'flex-grow:1; cursor: pointer; height: 6px; background: #555; outline: none; border-radius: 3px;';
+                    rangeInput.style.cssText = 'flex-grow:1; cursor: pointer; height: 4px; background: #dadce0; outline: none; border-radius: 2px; accent-color: #1a73e8;';
+                    
                     const percentText = document.createElement('span');
-                    percentText.style.cssText = 'font-size: 11px; width: 160px; text-align: left; color: #ccc; margin-left: 8px;';
+                    percentText.style.cssText = 'font-size: 12px; width: 140px; text-align: left; color: #5f6368; margin-left: 10px; font-variant-numeric: tabular-nums;';
                     const updatePercentText = (percentVal) => {
                         const resName = capResourceMap[configKey];
                         let actualVal = 'N/A';
@@ -316,14 +357,16 @@
                     sliderContainer.appendChild(rangeInput); sliderContainer.appendChild(percentText); rightSide.appendChild(sliderContainer);
                 } else if (itemType === 'fixed') {
                     const input = document.createElement('input'); input.type = 'number'; input.value = config[configKey].thresholdFixed;
-                    input.style.cssText = 'width: 70px; background: #333; color: #eee; border: 1px solid #444; text-align: right;';
+                    input.style.cssText = 'width: 70px; text-align: right; ' + inputStyle;
+                    inputFocus(input);
                     input.addEventListener('change', (e) => { config[configKey].thresholdFixed = parseInt(e.target.value) || 0; saveConfig(); });
                     rightSide.appendChild(input);
                 }
             } else if (isAutoTrade) {
                 const raceSelect = document.createElement('select');
                 raceSelect.id = 'kg-assist-select-autoTrade-race';
-                raceSelect.style.cssText = 'width: 80px; background: #333; color: #eee; border: 1px solid #444; font-size: 11px; margin-right: 5px;';
+                raceSelect.style.cssText = 'width: 90px; margin-right: 5px; cursor:pointer; ' + inputStyle;
+                inputFocus(raceSelect);
                 if (gamePage.diplomacy && gamePage.diplomacy.races) {
                     gamePage.diplomacy.races.forEach(race => { if (race.unlocked) { const option = document.createElement('option'); option.value = race.name; option.text = race.title || race.name; raceSelect.appendChild(option); }});
                     raceSelect.value = config[configKey].targetRace;
@@ -333,9 +376,14 @@
             }
             if (isInterval) {
                 const input = document.createElement('input'); input.type = 'number'; input.value = config[configKey].intervalMinutes; input.min = 1;
-                input.style.cssText = 'width: 45px; background: #333; color: #eee; border: 1px solid #444; text-align: right;';
+                input.style.cssText = 'width: 50px; text-align: right; ' + inputStyle;
+                inputFocus(input);
                 input.addEventListener('change', (e) => { config[configKey].intervalMinutes = Math.max(1, parseInt(e.target.value) || 1); saveConfig(); updateSpecificTimer(configKey); });
-                rightSide.appendChild(input); rightSide.appendChild(document.createTextNode('分'));
+                rightSide.appendChild(input); 
+                const minLabel = document.createElement('span');
+                minLabel.innerText = '分';
+                minLabel.style.cssText = 'color: #5f6368; margin-left: 4px; font-size: 12px;';
+                rightSide.appendChild(minLabel);
             }
             row.appendChild(rightSide);
             return row;
@@ -348,56 +396,61 @@
         t1.appendChild(createControlItem('铁 -> 金属板 (上限%)', 'iron', 'hybrid'));
         t1.appendChild(createControlItem('猫薄荷 -> 木头 (上限%)', 'catnipWood', 'hybrid'));
         t1.appendChild(createControlItem('石油 -> 煤油 (上限%)', 'oilKerosene', 'hybrid'));
-        t1.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t1.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
         t1.appendChild(createControlItem('难得素 -> E合金 (上限%)', 'eludium', 'hybrid'));
         t1.appendChild(createControlItem('钛 -> 合金 (上限%)', 'titaniumAlloy', 'hybrid')); 
         t1.appendChild(createControlItem('铀 -> 钍 (上限%)', 'uraniumThorium', 'hybrid')); 
-        t1.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t1.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
         t1.appendChild(createControlItem('木梁 -> 脚手架 (固定值)', 'scaffold', 'hybrid'));
         t1.appendChild(createControlItem('毛皮 ->羊皮纸 (固定值)', 'parchment', 'hybrid'));
 
         const t2 = tabContents[1];
         t2.appendChild(createControlItem('自动点星图', 'starchart'));
         t2.appendChild(createControlItem('自动升级独角兽牧场', 'unicornPasture'));
-        t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t2.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
         t2.appendChild(createControlItem('自动派猎人 (Timer)', 'hunters', 'interval'));
         t2.appendChild(createControlItem('智能猎人 (金满停/低开)', 'smartHunterGold'));
-        t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t2.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
         t2.appendChild(createControlItem('自动赞美太阳 (Timer)', 'praise', 'interval'));
         t2.appendChild(createControlItem('定时合手稿', 'manuscript', 'interval'));
         t2.appendChild(createControlItem('定时合概要', 'compendium', 'interval'));
         t2.appendChild(createControlItem('定时合蓝图', 'blueprint', 'interval'));
-        t2.appendChild(document.createElement('hr')).style.borderColor = '#444';
+        t2.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
         t2.appendChild(createControlItem('定时云存储', 'cloudSave', 'interval'));
 
         const t3 = tabContents[2];
         t3.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
         t3.appendChild(createControlItem('定时交易 (Timer)', 'autoTrade', 'interval'));
         
-        const hr = document.createElement('hr'); hr.style.borderColor = '#666'; hr.style.marginTop = '15px';
+        const hr = document.createElement('hr'); 
+        hr.style.cssText = 'border: 0; border-top: 1px solid #e0e0e0; margin: 16px 0;';
         t3.appendChild(hr);
 
         const tradeHeader = document.createElement('div');
         tradeHeader.innerHTML = '<strong>智能级联交易 (Smart Cascade)</strong>';
-        tradeHeader.style.marginBottom = '5px'; tradeHeader.style.color = '#ffdb4d';
+        tradeHeader.style.marginBottom = '8px'; tradeHeader.style.color = '#1a73e8'; // Google Blue
         t3.appendChild(tradeHeader);
 
         const stRow = document.createElement('div');
-        stRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;';
-        const stLabel = document.createElement('label'); stLabel.style.cursor = 'pointer';
-        const stCb = document.createElement('input'); stCb.type = 'checkbox'; stCb.checked = config.smartTrade.enabled; stCb.style.marginRight = '8px';
+        stRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;';
+        const stLabel = document.createElement('label'); stLabel.style.cursor = 'pointer'; stLabel.style.color = '#3c4043';
+        const stCb = document.createElement('input'); stCb.type = 'checkbox'; stCb.checked = config.smartTrade.enabled; stCb.style.marginRight = '8px'; stCb.style.accentColor = '#1a73e8';
         stCb.addEventListener('change', (e) => { config.smartTrade.enabled = e.target.checked; saveConfig(); });
         stLabel.appendChild(stCb); stLabel.appendChild(document.createTextNode('启用级联逻辑'));
         stRow.appendChild(stLabel); t3.appendChild(stRow);
 
         function createPriorityRow(label, pKey, isFinal = false) {
             const container = document.createElement('div');
-            container.style.cssText = 'margin-bottom: 6px; padding-left: 10px; border-left: 2px solid #555;';
+            container.style.cssText = 'margin-bottom: 8px; padding-left: 12px; border-left: 2px solid #dadce0;';
             const topRow = document.createElement('div');
-            topRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;';
-            const lbl = document.createElement('span'); lbl.innerHTML = label; lbl.style.fontSize='11px';
+            topRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;';
+            const lbl = document.createElement('span'); lbl.innerHTML = label; lbl.style.fontSize='12px'; lbl.style.color = '#5f6368';
+            
             const raceSelect = document.createElement('select');
-            raceSelect.style.cssText = 'width: 100px; background: #333; color: #eee; border: 1px solid #444; font-size: 11px;';
+            raceSelect.style.cssText = 'width: 110px; background: #f1f3f4; color: #202124; border: 1px solid transparent; border-radius: 6px; padding: 2px 4px; outline:none; font-size: 11px;';
+            raceSelect.addEventListener('focus', () => { raceSelect.style.background='#fff'; raceSelect.style.border='1px solid #1a73e8'; });
+            raceSelect.addEventListener('blur', () => { raceSelect.style.background='#f1f3f4'; raceSelect.style.border='1px solid transparent'; });
+
             if (gamePage.diplomacy && gamePage.diplomacy.races) {
                 gamePage.diplomacy.races.forEach(race => { 
                     if (race.unlocked) { 
@@ -416,9 +469,9 @@
                 const range = document.createElement('input');
                 range.type = 'range'; range.min = '1'; range.max = '100';
                 range.value = config.smartTrade[pKey].percent;
-                range.style.cssText = 'flex-grow:1; height:5px; background:#555; cursor:pointer; margin-right:5px;';
+                range.style.cssText = 'flex-grow:1; height:4px; background:#dadce0; cursor:pointer; margin-right:8px; accent-color: #1a73e8;';
                 const valDisplay = document.createElement('span');
-                valDisplay.style.cssText = 'font-size:10px; color:#aaa; width: 140px; text-align:right; white-space:nowrap;';
+                valDisplay.style.cssText = 'font-size:11px; color:#5f6368; width: 130px; text-align:right; white-space:nowrap; font-variant-numeric: tabular-nums;';
                 const updateDisplay = () => {
                     const race = raceSelect.value;
                     const pct = parseInt(range.value);
@@ -455,21 +508,27 @@
         t3.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); 
         const stTip = document.createElement('div');
         stTip.innerText = "* 逻辑: P1满 -> P2, P2满 -> P3\n* P3 无需设置阈值";
-        stTip.style.fontSize = '10px'; stTip.style.color = '#888'; stTip.style.paddingLeft = '10px';
+        stTip.style.fontSize = '11px'; stTip.style.color = '#70757a'; stTip.style.paddingLeft = '12px';
         t3.appendChild(stTip);
 
         const t4 = tabContents[3];
         const profileHeader = document.createElement('div');
         profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>';
-        profileHeader.style.marginBottom = '8px'; profileHeader.style.color = '#88ccff';
+        profileHeader.style.marginBottom = '12px'; profileHeader.style.color = '#1a73e8';
         t4.appendChild(profileHeader);
 
+        const btnStyle = 'border:none; color:white; font-size:12px; cursor:pointer; padding:6px 12px; border-radius:4px; transition: opacity 0.2s;';
+        const inputStyle = 'flex-grow:1; background:#f1f3f4; color:#202124; border:1px solid transparent; margin-right:8px; padding:6px; font-size:12px; border-radius:4px; outline:none;';
+
         const saveRow = document.createElement('div');
-        saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:8px;';
+        saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:12px;';
         const nameInput = document.createElement('input');
-        nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
+        nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = inputStyle;
+        nameInput.addEventListener('focus', () => { nameInput.style.background='#fff'; nameInput.style.border='1px solid #1a73e8'; });
+        nameInput.addEventListener('blur', () => { nameInput.style.background='#f1f3f4'; nameInput.style.border='1px solid transparent'; });
+
         const saveBtn = document.createElement('button');
-        saveBtn.innerText = '保存'; saveBtn.style.cssText = 'background:#447744; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
+        saveBtn.innerText = '保存'; saveBtn.style.cssText = 'background:#188038; ' + btnStyle; // Google Green
         saveBtn.addEventListener('click', () => { if (saveProfile(nameInput.value)) { alert(`✅ [${nameInput.value}] 保存成功`); createUI(); } });
         saveRow.appendChild(nameInput); saveRow.appendChild(saveBtn);
         t4.appendChild(saveRow);
@@ -477,15 +536,18 @@
         const loadRow = document.createElement('div');
         loadRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
         const profileSelect = document.createElement('select');
-        profileSelect.style.cssText = 'flex-grow:1; background:#333; color:#eee; border:1px solid #444; margin-right:5px; padding:3px; font-size:11px;';
+        profileSelect.style.cssText = inputStyle;
+        profileSelect.addEventListener('focus', () => { profileSelect.style.background='#fff'; profileSelect.style.border='1px solid #1a73e8'; });
+        profileSelect.addEventListener('blur', () => { profileSelect.style.background='#f1f3f4'; profileSelect.style.border='1px solid transparent'; });
+        
         Object.keys(getProfiles()).forEach(pName => { const opt = document.createElement('option'); opt.value = pName; opt.text = pName; profileSelect.appendChild(opt); });
         
         const loadBtn = document.createElement('button');
-        loadBtn.innerText = '读取'; loadBtn.style.cssText = 'background:#444477; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px; margin-right:5px;';
+        loadBtn.innerText = '读取'; loadBtn.style.cssText = 'background:#1a73e8; margin-right:8px; ' + btnStyle; // Google Blue
         loadBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`读取 [${profileSelect.value}]?`)) loadProfile(profileSelect.value); });
         
         const delBtn = document.createElement('button');
-        delBtn.innerText = '删除'; delBtn.style.cssText = 'background:#774444; border:none; color:white; font-size:11px; cursor:pointer; padding:3px 8px; border-radius:3px;';
+        delBtn.innerText = '删除'; delBtn.style.cssText = 'background:#d93025; ' + btnStyle; // Google Red
         delBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`删除 [${profileSelect.value}]?`)) { deleteProfile(profileSelect.value); createUI(); } });
         
         loadRow.appendChild(profileSelect); loadRow.appendChild(loadBtn); loadRow.appendChild(delBtn);
@@ -549,13 +611,9 @@
 
     // 辅助：尝试在页面上通过文字找到按钮元素
     function clickButtonByLabel(labelText) {
-        // 查找所有可能的按钮容器
-        // Kittens Game 的按钮通常在 .btnContent 中
-        // 我们遍历所有 .btnContent，看文本是否包含 labelText
         const allButtons = document.querySelectorAll('.btnContent');
         for (let i = 0; i < allButtons.length; i++) {
             if (allButtons[i].textContent.includes(labelText)) {
-                // 检查是否是禁用的 (unavailable)
                 const container = allButtons[i].closest('.btn');
                 if (container && !container.classList.contains('disabled') && !container.classList.contains('grayed')) {
                     allButtons[i].click();
@@ -591,15 +649,12 @@
 
                         if (canAfford) {
                             // 2. 尝试模拟点击
-                            // 获取该建筑在游戏里显示的名称（例如“独角兽牧场”）
                             const bldMeta = gamePage.bld.get(bldName);
                             const label = bldMeta ? bldMeta.label : 'Unicorn Pasture';
                             
-                            // 执行点击查找
                             if (clickButtonByLabel(label)) {
                                 console.log(`【自动化】🦄 自动点击: [${label}]`);
                             } else {
-                                // 尝试备用英文名
                                 if (label !== 'Unicorn Pasture') clickButtonByLabel('Unicorn Pasture');
                             }
                         }
@@ -724,7 +779,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.14 (模拟点击版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.15 (Material UI版) 启动成功！ <<<');
             }
         }, 1000);
     }
