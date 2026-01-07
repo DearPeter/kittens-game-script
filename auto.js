@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.17 - 喵力阈值版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.21 - 喵力阈值版)
 // @namespace    http://tampermonkey.net/
 // @version      7.8.21
 // @description  基于v7.8.16改进。打猎和贸易功能新增“喵力阈值(Cap%)”触发模式。开启阈值模式时自动关闭定时器，彻底解决后期喵力溢出问题。
