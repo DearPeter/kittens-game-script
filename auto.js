@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.19 - UI防丢失版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.17 - 喵力阈值版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.20
-// @description  基于v7.8.18改进。修复UI面板可能消失的问题（增加坐标强制修正、单位自动补全）。保留智能猎人、独角兽模拟点击等所有功能。
+// @version      7.8.21
+// @description  基于v7.8.16改进。打猎和贸易功能新增“喵力阈值(Cap%)”触发模式。开启阈值模式时自动关闭定时器，彻底解决后期喵力溢出问题。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,11 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.19 (UI防丢失版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.17 (喵力阈值版) 正在加载... <<<');
+
+    // ==========================================
+    // 1. 配置中心与存储 (Configuration & Storage)
+    // ==========================================
 
     const STORAGE_KEY = 'KG_AutoAssist_Config_v7_8'; 
     const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1';
@@ -35,6 +39,7 @@
         
         smartHunterGold: { enabled: false }, 
         
+        // [修改] 猎人和交易改为复杂对象，支持 mode
         hunters: { enabled: true, mode: 'interval', intervalMinutes: 5, thresholdPercent: 95 },
         autoTrade: { enabled: false, mode: 'interval', intervalMinutes: 20, thresholdPercent: 95, targetRace: 'zebras' },
 
@@ -63,9 +68,12 @@
             const saved = localStorage.getItem(STORAGE_KEY);
             if (saved) {
                 const parsed = JSON.parse(saved);
+                // 兼容性合并
                 if (!parsed.global) parsed.global = defaultConfig.global;
                 if (!parsed.hunters || !parsed.hunters.mode) parsed.hunters = { ...defaultConfig.hunters, ...parsed.hunters, mode: 'interval', thresholdPercent: 95 };
                 if (!parsed.autoTrade || !parsed.autoTrade.mode) parsed.autoTrade = { ...defaultConfig.autoTrade, ...parsed.autoTrade, mode: 'interval', thresholdPercent: 95 };
+                
+                // 其他字段合并...
                 for (const key in defaultConfig) {
                     if (parsed[key] === undefined) parsed[key] = defaultConfig[key];
                 }
@@ -156,13 +164,12 @@
             text-align: center; line-height: 50px; font-size: 24px; 
             cursor: pointer; z-index: 2147483647; user-select: none; 
             box-shadow: 0 4px 12px rgba(26,115,232,0.4); 
-            transition: all 0.3s ease; border: none; display: block; visibility: visible;
+            transition: all 0.3s ease; border: none;
         `;
         fab.innerHTML = '🐱';
         fab.title = '点击打开全能小助手';
         fab.addEventListener('click', () => { config.ui.fabHidden = true; saveConfig(); createUI(); });
         document.body.appendChild(fab);
-        console.log('【小助手】FAB 图标已创建');
     }
 
     function injectStyles() {
@@ -183,6 +190,7 @@
             .kg-tab-content { display: none; padding: 16px 8px; animation: kg-fade 0.2s ease-in-out; }
             .kg-tab-content.active { display: block; }
             @keyframes kg-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+            
             #kg-auto-assist-panel ::-webkit-scrollbar { width: 6px; }
             #kg-auto-assist-panel ::-webkit-scrollbar-thumb { background: #dadce0; border-radius: 3px; }
             #kg-auto-assist-panel ::-webkit-scrollbar-thumb:hover { background: #bdc1c6; }
@@ -192,36 +200,20 @@
 
     function createMainPanel() {
         injectStyles();
-        const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
-        const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
-        const panelTotalWidth = 490;
-        const panelTotalHeightEstimate = 600; 
-
-        // [修复] 强制坐标修正逻辑
-        let topPosVal = config.ui.posY === 'auto' ? 20 : parseInt(config.ui.posY);
-        let leftPosVal = config.ui.posX === 'auto' ? 'auto' : parseInt(config.ui.posX);
-
-        // 如果坐标跑出屏幕，强制重置
-        if (typeof leftPosVal === 'number' && (leftPosVal < 0 || leftPosVal > winWidth - 100)) { leftPosVal = 'auto'; }
-        if (topPosVal < 0 || topPosVal > winHeight - 100) { topPosVal = 20; }
-
-        // [修复] 确保有单位 'px'
-        const topPosStr = topPosVal + 'px';
-        const leftPosStr = leftPosVal === 'auto' ? 'auto' : leftPosVal + 'px';
-        const rightPosStr = leftPosVal === 'auto' ? '20px' : 'auto';
-
         const panel = document.createElement('div');
         panel.id = 'kg-auto-assist-panel';
+        const topPos = config.ui.posY !== 'auto' ? config.ui.posY : '20px';
+        const leftPos = config.ui.posX !== 'auto' ? config.ui.posX : 'auto';
+        const rightPos = config.ui.posX === 'auto' ? '20px' : 'auto';
         
         panel.style.cssText = `
-            position: fixed; top: ${topPosStr}; left: ${leftPosStr}; right: ${rightPosStr}; 
+            position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; 
             width: 460px; 
             background-color: #ffffff; color: #3c4043; 
-            border-radius: 16px; z-index: 2147483647; 
+            border-radius: 16px; z-index: 9999; 
             font-family: 'Roboto', 'Segoe UI', Arial, sans-serif; font-size: 13px; 
             box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
             overflow: hidden; transition: box-shadow 0.3s;
-            display: block; visibility: visible;
         `;
 
         // --- Header ---
@@ -229,7 +221,7 @@
         header.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: move; background: #ffffff; border-bottom: 1px solid #f1f3f4;`;
         
         const titleDiv = document.createElement('div');
-        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.19</strong>';
+        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.17</strong>';
         
         const globalToggleDiv = document.createElement('div');
         globalToggleDiv.style.cssText = 'display: flex; align-items: center; gap: 8px;';
@@ -295,7 +287,7 @@
             row.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 2px 4px;';
             const isInterval = uiType === 'interval';
             const isHybridThreshold = uiType === 'hybrid';
-            const isModeSwitch = uiType === 'modeSwitch';
+            const isModeSwitch = uiType === 'modeSwitch'; // 新增：模式切换型
 
             const leftSide = document.createElement('label');
             leftSide.style.cssText = 'display: flex; align-items: center; cursor: pointer; flex-grow: 1; color: #3c4043; font-weight: 400;';
@@ -313,7 +305,7 @@
             rightSide.style.cssText = 'display: flex; align-items: center; justify-content: flex-end;';
             const inputStyle = 'background: #f1f3f4; color: #202124; border: 1px solid transparent; border-radius: 6px; padding: 4px 6px; font-family: inherit; font-size: 12px; transition: 0.2s; outline: none;';
 
-            if (isModeSwitch) {
+            if (isModeSwitch) { // 猎人 & 交易的特殊 UI
                 const modeSelect = document.createElement('select');
                 modeSelect.style.cssText = 'width: 60px; margin-right: 6px; ' + inputStyle;
                 const opt1 = document.createElement('option'); opt1.value = 'interval'; opt1.text = '定时';
@@ -352,10 +344,11 @@
                     config[configKey].mode = e.target.value;
                     renderValueInput();
                     saveConfig();
-                    updateSpecificTimer(configKey);
+                    updateSpecificTimer(configKey); // 切换模式时更新定时器
                 });
 
                 if(configKey === 'autoTrade') {
+                    // Trade needs race select too
                     const raceSelect = document.createElement('select');
                     raceSelect.style.cssText = 'width: 70px; margin-right: 6px; ' + inputStyle;
                     if (gamePage.diplomacy && gamePage.diplomacy.races) {
@@ -370,6 +363,7 @@
                 rightSide.appendChild(valueContainer);
 
             } else if (isHybridThreshold) {
+                // ... (Existing Percent/Fixed Logic) ...
                 const itemType = config[configKey].type;
                 if (itemType === 'percent') {
                     const sliderContainer = document.createElement('div'); sliderContainer.style.cssText = 'display:flex; align-items:center; width: 240px;';
@@ -423,7 +417,7 @@
         t2.appendChild(createControlItem('自动点星图', 'starchart'));
         t2.appendChild(createControlItem('自动升级独角兽牧场', 'unicornPasture'));
         t2.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
-        t2.appendChild(createControlItem('自动派猎人', 'hunters', 'modeSwitch'));
+        t2.appendChild(createControlItem('自动派猎人', 'hunters', 'modeSwitch')); // [修改] 使用模式切换
         t2.appendChild(createControlItem('智能猎人 (金满停/低开)', 'smartHunterGold'));
         t2.appendChild(document.createElement('hr')).style.cssText = 'border: 0; border-top: 1px solid #f1f3f4; margin: 8px 0;';
         t2.appendChild(createControlItem('自动赞美太阳 (Timer)', 'praise', 'interval'));
@@ -436,7 +430,7 @@
         // T3: Trade
         const t3 = tabContents[2];
         t3.appendChild(createControlItem('猫薄荷 < 阈值 -> 交易鲨鱼(1次)', 'emergencyTradeCatnip', 'hybrid'));
-        t3.appendChild(createControlItem('自动交易', 'autoTrade', 'modeSwitch'));
+        t3.appendChild(createControlItem('自动交易', 'autoTrade', 'modeSwitch')); // [修改] 使用模式切换
         
         const hr = document.createElement('hr'); hr.style.cssText = 'border: 0; border-top: 1px solid #e0e0e0; margin: 16px 0;'; t3.appendChild(hr);
         const tradeHeader = document.createElement('div'); tradeHeader.innerHTML = '<strong>智能级联交易 (Smart Cascade)</strong>'; tradeHeader.style.marginBottom = '8px'; tradeHeader.style.color = '#1a73e8'; t3.appendChild(tradeHeader);
@@ -477,13 +471,15 @@
         // T4: Profiles
         const t4 = tabContents[3];
         const profileHeader = document.createElement('div'); profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>'; profileHeader.style.marginBottom = '12px'; profileHeader.style.color = '#1a73e8'; t4.appendChild(profileHeader);
+        const btnStyle = 'border:none; color:white; font-size:12px; cursor:pointer; padding:6px 12px; border-radius:4px; transition: opacity 0.2s;';
+        const inputStyle2 = 'flex-grow:1; background:#f1f3f4; color:#202124; border:1px solid transparent; margin-right:8px; padding:6px; font-size:12px; border-radius:4px; outline:none;';
         const saveRow = document.createElement('div'); saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:12px;';
-        const nameInput = document.createElement('input'); nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = inputStyle;
+        const nameInput = document.createElement('input'); nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = inputStyle2;
         const saveBtn = document.createElement('button'); saveBtn.innerText = '保存'; saveBtn.style.cssText = 'background:#188038; ' + btnStyle;
         saveBtn.addEventListener('click', () => { if (saveProfile(nameInput.value)) { alert(`✅ [${nameInput.value}] 保存成功`); createUI(); } });
         saveRow.appendChild(nameInput); saveRow.appendChild(saveBtn); t4.appendChild(saveRow);
         const loadRow = document.createElement('div'); loadRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
-        const profileSelect = document.createElement('select'); profileSelect.style.cssText = inputStyle;
+        const profileSelect = document.createElement('select'); profileSelect.style.cssText = inputStyle2;
         Object.keys(getProfiles()).forEach(pName => { const opt = document.createElement('option'); opt.value = pName; opt.text = pName; profileSelect.appendChild(opt); });
         const loadBtn = document.createElement('button'); loadBtn.innerText = '读取'; loadBtn.style.cssText = 'background:#1a73e8; margin-right:8px; ' + btnStyle;
         loadBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`读取 [${profileSelect.value}]?`)) loadProfile(profileSelect.value); });
@@ -492,7 +488,6 @@
         loadRow.appendChild(profileSelect); loadRow.appendChild(loadBtn); loadRow.appendChild(delBtn); t4.appendChild(loadRow);
 
         document.body.appendChild(panel);
-        console.log('【小助手】面板已创建');
 
         let isDragging = false; let offsetX, offsetY;
         header.addEventListener('mousedown', (e) => { isDragging = true; offsetX = e.clientX - panel.offsetLeft; offsetY = e.clientY - panel.offsetTop; header.style.cursor = 'grabbing'; });
@@ -501,24 +496,10 @@
     }
 
     // ==========================================
-    // 3. 自动化逻辑核心 (Core Logic)
+    // 3. 自动化逻辑核心
     // ==========================================
 
     const timers = {};
-
-    function shouldHunt() {
-        if (!config.smartHunterGold.enabled) return true;
-        try {
-            const gold = gamePage.resPool.get('gold');
-            const furs = gamePage.resPool.get('furs');
-            const ivory = gamePage.resPool.get('ivory');
-            if (!gold) return true;
-            const isGoldFull = (gold.value / gold.maxValue) >= 0.99;
-            const hasEnoughLux = (furs && furs.value > 1000) && (ivory && ivory.value > 1000);
-            if (isGoldFull && hasEnoughLux) return false;
-        } catch (e) {}
-        return true;
-    }
 
     function checkAndCraftThreshold(resName, craftTargetName, configKey) {
         if (!config.global.enabled) return;
@@ -548,6 +529,7 @@
                 console.log(`【级联交易】切换目标: [${config.autoTrade.targetRace}] -> [${targetRace}]`);
                 config.autoTrade.targetRace = targetRace;
                 saveConfig();
+                // 如果UI存在，更新UI
                 const sel = document.getElementById('kg-assist-select-autoTrade-race');
                 if (sel) sel.value = targetRace;
             }
@@ -606,24 +588,37 @@
                 } catch (e) {}
             }
 
-            // [智能猎人-阈值模式]
+            // [新增] 猎人阈值触发逻辑
             if (config.hunters.enabled && config.hunters.mode === 'threshold') {
                 try {
                     const mp = gamePage.resPool.get('manpower');
                     if (mp && mp.maxValue > 0) {
                         const ratio = mp.value / mp.maxValue;
                         if (ratio >= (config.hunters.thresholdPercent / 100)) {
-                            if (shouldHunt()) {
+                            // 检查智能猎人限制
+                            let shouldHunt = true;
+                            if (config.smartHunterGold.enabled) {
+                                const gold = gamePage.resPool.get('gold');
+                                const furs = gamePage.resPool.get('furs');
+                                const ivory = gamePage.resPool.get('ivory');
+                                // 如果黄金满且稀有资源不少，则不打猎
+                                if (gold.value >= gold.maxValue && furs.value > 1000 && ivory.value > 1000) {
+                                    shouldHunt = false;
+                                }
+                            }
+                            if (shouldHunt) {
                                 gamePage.village.huntAll();
+                                // console.log('【自动化】🏹 喵力满，触发打猎');
                             }
                         }
                     }
                 } catch(e) {}
             }
 
-            // [交易-阈值模式]
+            // [新增] 交易阈值触发逻辑
             if (config.autoTrade.enabled && config.autoTrade.mode === 'threshold') {
                 try {
+                    // 使用喵力作为交易触发基准
                     const mp = gamePage.resPool.get('manpower');
                     if (mp && mp.maxValue > 0) {
                         const ratio = mp.value / mp.maxValue;
@@ -632,6 +627,7 @@
                             const race = gamePage.diplomacy.races.find(r => r.name === targetId);
                             if (race && race.unlocked) {
                                 gamePage.diplomacy.tradeAll(race);
+                                // console.log(`【自动化】🤝 喵力满，触发交易: [${race.title}]`);
                             }
                         }
                     }
@@ -679,19 +675,15 @@
     }
 
     const tasks = {
+        // [修改] 猎人和交易的定时任务现在只在 mode='interval' 时执行
         hunters: () => { 
             if (!config.global.enabled) return; 
-            if (config.hunters.mode === 'threshold') return; 
-            try { 
-                if (gamePage.village.huntAll && shouldHunt()) { 
-                    gamePage.village.huntAll(); 
-                    console.log(`【自动化】✅ 派出猎人 (Timer)`); 
-                } 
-            } catch (e) {} 
+            if (config.hunters.mode === 'threshold') return; // 阈值模式下不走定时器
+            try { if (gamePage.village.huntAll) { gamePage.village.huntAll(); console.log(`【自动化】✅ 派出猎人 (Timer)`); } } catch (e) {} 
         },
         autoTrade: () => {
             if (!config.global.enabled) return;
-            if (config.autoTrade.mode === 'threshold') return; 
+            if (config.autoTrade.mode === 'threshold') return; // 阈值模式下不走定时器
             const targetId = config.autoTrade.targetRace;
             if (!targetId || !gamePage.diplomacy) return;
             try {
@@ -719,7 +711,9 @@
     function updateSpecificTimer(key) {
         if (timers[key]) clearInterval(timers[key]);
         if (config[key].enabled) {
+            // 如果是猎人或交易，且模式为 'threshold'，则不启动定时器
             if ((key === 'hunters' || key === 'autoTrade') && config[key].mode === 'threshold') {
+                // Timer cleared above, just return
                 console.log(`[设置] ${key} 已切换为阈值模式，关闭定时器。`);
                 return;
             }
@@ -738,7 +732,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.19 (UI防丢失版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.17 (喵力阈值版) 启动成功！ <<<');
             }
         }, 1000);
     }
@@ -754,26 +748,13 @@
         if (style) style.remove();
     };
 
-    // F12 调试与重置
     document.addEventListener('keydown', function(event) {
         if (event.key === 'F12') {
-            const gold = gamePage.resPool.get('gold');
-            console.log('【小助手日志】🔍 状态报告:');
-            console.log('- 全局开关:', config.global.enabled);
-            console.log('- 面板坐标:', config.ui.posX, config.ui.posY);
-            console.log('- 猎人/交易模式:', config.hunters.mode, '/', config.autoTrade.mode);
-            console.log('- 黄金:', gold ? `${gold.value.toFixed(2)}/${gold.maxValue}` : '未找到');
-            
-            // 紧急 UI 重置功能
-            const panel = document.getElementById('kg-auto-assist-panel');
-            if (!panel || panel.style.display === 'none') {
-                console.log('【小助手日志】⚠️ 检测到面板不可见，尝试重置...');
-                config.ui.fabHidden = false;
-                config.ui.posX = 'auto';
-                config.ui.posY = '20px';
-                saveConfig();
-                createUI();
-            }
+            console.log('【小助手日志】🔍 全局开关:', config.global.enabled);
+            console.log('【小助手日志】🔍 猎人模式:', config.hunters.mode, '阈值:', config.hunters.thresholdPercent + '%');
+            console.log('【小助手日志】🔍 交易模式:', config.autoTrade.mode, '阈值:', config.autoTrade.thresholdPercent + '%');
+            console.log('【小助手日志】🔍 完整配置:', config);
+            // event.preventDefault(); // Optional: uncomment if F12 conflict
         }
     });
 
