@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.18 - 智能猎人修复版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.19 - UI防丢失版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.18
-// @description  基于v7.8.17改进。修复“智能猎人”在定时模式下失效的问题；优化黄金满仓判定逻辑（99%即视为满），防止资源溢出浪费喵力。
+// @version      7.8.19
+// @description  基于v7.8.18改进。修复UI面板可能消失的问题（增加坐标强制修正、单位自动补全）。保留智能猎人、独角兽模拟点击等所有功能。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,11 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.18 (智能猎人修复版) 正在加载... <<<');
-
-    // ==========================================
-    // 1. 配置中心与存储
-    // ==========================================
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.19 (UI防丢失版) 正在加载... <<<');
 
     const STORAGE_KEY = 'KG_AutoAssist_Config_v7_8'; 
     const PROFILES_KEY = 'KG_AutoAssist_Profiles_v1';
@@ -37,7 +33,7 @@
         titaniumAlloy: { enabled: false, type: 'percent', thresholdPercent: 90 },
         uraniumThorium: { enabled: false, type: 'percent', thresholdPercent: 90 },
         
-        smartHunterGold: { enabled: false }, // 智能猎人开关
+        smartHunterGold: { enabled: false }, 
         
         hunters: { enabled: true, mode: 'interval', intervalMinutes: 5, thresholdPercent: 95 },
         autoTrade: { enabled: false, mode: 'interval', intervalMinutes: 20, thresholdPercent: 95, targetRace: 'zebras' },
@@ -160,12 +156,13 @@
             text-align: center; line-height: 50px; font-size: 24px; 
             cursor: pointer; z-index: 2147483647; user-select: none; 
             box-shadow: 0 4px 12px rgba(26,115,232,0.4); 
-            transition: all 0.3s ease; border: none;
+            transition: all 0.3s ease; border: none; display: block; visibility: visible;
         `;
         fab.innerHTML = '🐱';
         fab.title = '点击打开全能小助手';
         fab.addEventListener('click', () => { config.ui.fabHidden = true; saveConfig(); createUI(); });
         document.body.appendChild(fab);
+        console.log('【小助手】FAB 图标已创建');
     }
 
     function injectStyles() {
@@ -186,7 +183,6 @@
             .kg-tab-content { display: none; padding: 16px 8px; animation: kg-fade 0.2s ease-in-out; }
             .kg-tab-content.active { display: block; }
             @keyframes kg-fade { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
-            
             #kg-auto-assist-panel ::-webkit-scrollbar { width: 6px; }
             #kg-auto-assist-panel ::-webkit-scrollbar-thumb { background: #dadce0; border-radius: 3px; }
             #kg-auto-assist-panel ::-webkit-scrollbar-thumb:hover { background: #bdc1c6; }
@@ -196,20 +192,36 @@
 
     function createMainPanel() {
         injectStyles();
+        const winWidth = window.innerWidth || document.documentElement.clientWidth || document.body.clientWidth;
+        const winHeight = window.innerHeight || document.documentElement.clientHeight || document.body.clientHeight;
+        const panelTotalWidth = 490;
+        const panelTotalHeightEstimate = 600; 
+
+        // [修复] 强制坐标修正逻辑
+        let topPosVal = config.ui.posY === 'auto' ? 20 : parseInt(config.ui.posY);
+        let leftPosVal = config.ui.posX === 'auto' ? 'auto' : parseInt(config.ui.posX);
+
+        // 如果坐标跑出屏幕，强制重置
+        if (typeof leftPosVal === 'number' && (leftPosVal < 0 || leftPosVal > winWidth - 100)) { leftPosVal = 'auto'; }
+        if (topPosVal < 0 || topPosVal > winHeight - 100) { topPosVal = 20; }
+
+        // [修复] 确保有单位 'px'
+        const topPosStr = topPosVal + 'px';
+        const leftPosStr = leftPosVal === 'auto' ? 'auto' : leftPosVal + 'px';
+        const rightPosStr = leftPosVal === 'auto' ? '20px' : 'auto';
+
         const panel = document.createElement('div');
         panel.id = 'kg-auto-assist-panel';
-        const topPos = config.ui.posY !== 'auto' ? config.ui.posY : '20px';
-        const leftPos = config.ui.posX !== 'auto' ? config.ui.posX : 'auto';
-        const rightPos = config.ui.posX === 'auto' ? '20px' : 'auto';
         
         panel.style.cssText = `
-            position: fixed; top: ${topPos}; left: ${leftPos}; right: ${rightPos}; 
+            position: fixed; top: ${topPosStr}; left: ${leftPosStr}; right: ${rightPosStr}; 
             width: 460px; 
             background-color: #ffffff; color: #3c4043; 
-            border-radius: 16px; z-index: 9999; 
+            border-radius: 16px; z-index: 2147483647; 
             font-family: 'Roboto', 'Segoe UI', Arial, sans-serif; font-size: 13px; 
             box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
             overflow: hidden; transition: box-shadow 0.3s;
+            display: block; visibility: visible;
         `;
 
         // --- Header ---
@@ -217,7 +229,7 @@
         header.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: move; background: #ffffff; border-bottom: 1px solid #f1f3f4;`;
         
         const titleDiv = document.createElement('div');
-        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.18</strong>';
+        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.19</strong>';
         
         const globalToggleDiv = document.createElement('div');
         globalToggleDiv.style.cssText = 'display: flex; align-items: center; gap: 8px;';
@@ -466,12 +478,12 @@
         const t4 = tabContents[3];
         const profileHeader = document.createElement('div'); profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>'; profileHeader.style.marginBottom = '12px'; profileHeader.style.color = '#1a73e8'; t4.appendChild(profileHeader);
         const saveRow = document.createElement('div'); saveRow.style.cssText = 'display:flex; justify-content:space-between; margin-bottom:12px;';
-        const nameInput = document.createElement('input'); nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = inputStyle2;
+        const nameInput = document.createElement('input'); nameInput.placeholder = '输入配置名称'; nameInput.style.cssText = inputStyle;
         const saveBtn = document.createElement('button'); saveBtn.innerText = '保存'; saveBtn.style.cssText = 'background:#188038; ' + btnStyle;
         saveBtn.addEventListener('click', () => { if (saveProfile(nameInput.value)) { alert(`✅ [${nameInput.value}] 保存成功`); createUI(); } });
         saveRow.appendChild(nameInput); saveRow.appendChild(saveBtn); t4.appendChild(saveRow);
         const loadRow = document.createElement('div'); loadRow.style.cssText = 'display:flex; justify-content:space-between; align-items:center;';
-        const profileSelect = document.createElement('select'); profileSelect.style.cssText = inputStyle2;
+        const profileSelect = document.createElement('select'); profileSelect.style.cssText = inputStyle;
         Object.keys(getProfiles()).forEach(pName => { const opt = document.createElement('option'); opt.value = pName; opt.text = pName; profileSelect.appendChild(opt); });
         const loadBtn = document.createElement('button'); loadBtn.innerText = '读取'; loadBtn.style.cssText = 'background:#1a73e8; margin-right:8px; ' + btnStyle;
         loadBtn.addEventListener('click', () => { if (profileSelect.value && confirm(`读取 [${profileSelect.value}]?`)) loadProfile(profileSelect.value); });
@@ -480,6 +492,7 @@
         loadRow.appendChild(profileSelect); loadRow.appendChild(loadBtn); loadRow.appendChild(delBtn); t4.appendChild(loadRow);
 
         document.body.appendChild(panel);
+        console.log('【小助手】面板已创建');
 
         let isDragging = false; let offsetX, offsetY;
         header.addEventListener('mousedown', (e) => { isDragging = true; offsetX = e.clientX - panel.offsetLeft; offsetY = e.clientY - panel.offsetTop; header.style.cursor = 'grabbing'; });
@@ -493,32 +506,17 @@
 
     const timers = {};
 
-    // --- [修复核心] 统一的智能猎人判定逻辑 ---
-    // 返回 true 表示允许打猎，false 表示被智能保护阻止
     function shouldHunt() {
-        // 如果智能猎人没开，直接通过
         if (!config.smartHunterGold.enabled) return true;
-
         try {
             const gold = gamePage.resPool.get('gold');
             const furs = gamePage.resPool.get('furs');
             const ivory = gamePage.resPool.get('ivory');
-
-            if (!gold) return true; // 安全检查
-
-            // 1. 判断黄金是否已满 (使用 99% 阈值避免浮点误差)
+            if (!gold) return true;
             const isGoldFull = (gold.value / gold.maxValue) >= 0.99;
-            
-            // 2. 判断稀有资源是否充足 (硬编码 1000，可根据需求调整)
             const hasEnoughLux = (furs && furs.value > 1000) && (ivory && ivory.value > 1000);
-
-            // 3. 核心规则：如果黄金满了，且稀有资源也不缺，就阻止打猎 (保留喵力用于贸易)
-            if (isGoldFull && hasEnoughLux) {
-                return false;
-            }
-        } catch (e) {
-            console.error("SmartHunter check failed:", e);
-        }
+            if (isGoldFull && hasEnoughLux) return false;
+        } catch (e) {}
         return true;
     }
 
@@ -615,7 +613,6 @@
                     if (mp && mp.maxValue > 0) {
                         const ratio = mp.value / mp.maxValue;
                         if (ratio >= (config.hunters.thresholdPercent / 100)) {
-                            // 调用统一的判断逻辑
                             if (shouldHunt()) {
                                 gamePage.village.huntAll();
                             }
@@ -682,18 +679,14 @@
     }
 
     const tasks = {
-        // [智能猎人-定时模式]
         hunters: () => { 
             if (!config.global.enabled) return; 
             if (config.hunters.mode === 'threshold') return; 
             try { 
-                // 调用统一的判断逻辑
                 if (gamePage.village.huntAll && shouldHunt()) { 
                     gamePage.village.huntAll(); 
                     console.log(`【自动化】✅ 派出猎人 (Timer)`); 
-                } else if (!shouldHunt()) {
-                    console.log(`【自动化】🛑 智能猎人阻止了定时打猎 (黄金满 & 资源足)`);
-                }
+                } 
             } catch (e) {} 
         },
         autoTrade: () => {
@@ -745,7 +738,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.18 (智能猎人修复版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.19 (UI防丢失版) 启动成功！ <<<');
             }
         }, 1000);
     }
@@ -761,13 +754,26 @@
         if (style) style.remove();
     };
 
+    // F12 调试与重置
     document.addEventListener('keydown', function(event) {
         if (event.key === 'F12') {
             const gold = gamePage.resPool.get('gold');
-            console.log('【小助手日志】🔍 猎人模式:', config.hunters.mode);
-            console.log('【小助手日志】🔍 智能猎人开启:', config.smartHunterGold.enabled);
-            console.log('【小助手日志】🔍 黄金状态:', `${gold.value.toFixed(2)} / ${gold.maxValue} (${(gold.value/gold.maxValue*100).toFixed(2)}%)`);
-            console.log('【小助手日志】🔍 ShouldHunt判断:', shouldHunt());
+            console.log('【小助手日志】🔍 状态报告:');
+            console.log('- 全局开关:', config.global.enabled);
+            console.log('- 面板坐标:', config.ui.posX, config.ui.posY);
+            console.log('- 猎人/交易模式:', config.hunters.mode, '/', config.autoTrade.mode);
+            console.log('- 黄金:', gold ? `${gold.value.toFixed(2)}/${gold.maxValue}` : '未找到');
+            
+            // 紧急 UI 重置功能
+            const panel = document.getElementById('kg-auto-assist-panel');
+            if (!panel || panel.style.display === 'none') {
+                console.log('【小助手日志】⚠️ 检测到面板不可见，尝试重置...');
+                config.ui.fabHidden = false;
+                config.ui.posX = 'auto';
+                config.ui.posY = '20px';
+                saveConfig();
+                createUI();
+            }
         }
     });
 
