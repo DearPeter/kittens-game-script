@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         猫国建设者全能小助手 (GUI版 v7.8.19 - UI防丢失版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.19
+// @version      7.8.20
 // @description  基于v7.8.18改进。修复UI面板可能消失的问题（增加坐标强制修正、单位自动补全）。保留智能猎人、独角兽模拟点击等所有功能。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
