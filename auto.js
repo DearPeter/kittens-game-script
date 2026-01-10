@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         猫国建设者全能小助手 (GUI版 v7.8.21 - 喵力阈值版)
+// @name         猫国建设者全能小助手 (GUI版 v7.8.22 - 列维坦增强版)
 // @namespace    http://tampermonkey.net/
-// @version      7.8.21
-// @description  基于v7.8.16改进。打猎和贸易功能新增“喵力阈值(Cap%)”触发模式。开启阈值模式时自动关闭定时器，彻底解决后期喵力溢出问题。
+// @version      7.8.22
+// @description  基于v7.8.21改进。新增列维坦(Leviathans)优先交易功能：当难得素>15000时暂停E合金转化并优先交易时间水晶；新增自动喂食死角兽功能。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
@@ -13,7 +13,7 @@
 (function() {
     'use strict';
 
-    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.17 (喵力阈值版) 正在加载... <<<');
+    console.log('>>> 猫国建设者全能小助手 GUI版 v7.8.22 (列维坦增强版) 正在加载... <<<');
 
     // ==========================================
     // 1. 配置中心与存储 (Configuration & Storage)
@@ -39,16 +39,25 @@
         
         smartHunterGold: { enabled: false }, 
         
-        // [修改] 猎人和交易改为复杂对象，支持 mode
+        // 猎人和交易
         hunters: { enabled: true, mode: 'interval', intervalMinutes: 5, thresholdPercent: 95 },
         autoTrade: { enabled: false, mode: 'interval', intervalMinutes: 20, thresholdPercent: 95, targetRace: 'zebras' },
 
+        // 智能级联交易
         smartTrade: { 
             enabled: false,
             p1: { race: 'dragons', percent: 95 },
             p2: { race: 'zebras', percent: 90 },
             p3: { race: 'sharks', percent: 0 } 
         },
+        
+        // [新增] 列维坦 (Leviathans) 专用配置
+        leviathans: {
+            autoTrade: false,    // 优先交易开关
+            autoFeed: false,     // 自动喂食开关
+            minUnobtainium: 15000 // 固定阈值
+        },
+
         emergencyTradeCatnip: { enabled: false, type: 'percent', thresholdPercent: 60 },
         parchment: { enabled: true, type: 'fixed', thresholdFixed: 15000 },
         scaffold: { enabled: false, type: 'fixed', thresholdFixed: 10000 },
@@ -73,6 +82,9 @@
                 if (!parsed.hunters || !parsed.hunters.mode) parsed.hunters = { ...defaultConfig.hunters, ...parsed.hunters, mode: 'interval', thresholdPercent: 95 };
                 if (!parsed.autoTrade || !parsed.autoTrade.mode) parsed.autoTrade = { ...defaultConfig.autoTrade, ...parsed.autoTrade, mode: 'interval', thresholdPercent: 95 };
                 
+                // [新增] 合并列维坦配置
+                if (!parsed.leviathans) parsed.leviathans = defaultConfig.leviathans;
+
                 // 其他字段合并...
                 for (const key in defaultConfig) {
                     if (parsed[key] === undefined) parsed[key] = defaultConfig[key];
@@ -221,7 +233,7 @@
         header.style.cssText = `display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; cursor: move; background: #ffffff; border-bottom: 1px solid #f1f3f4;`;
         
         const titleDiv = document.createElement('div');
-        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.17</strong>';
+        titleDiv.innerHTML = '<strong style="font-size:16px; color:#202124;">🐱 小助手 v7.8.22</strong>';
         
         const globalToggleDiv = document.createElement('div');
         globalToggleDiv.style.cssText = 'display: flex; align-items: center; gap: 8px;';
@@ -468,6 +480,30 @@
         t3.appendChild(createPriorityRow("优先级 1 (P1):", 'p1')); t3.appendChild(createPriorityRow("优先级 2 (P2):", 'p2')); t3.appendChild(createPriorityRow("优先级 3 (兜底):", 'p3', true)); 
         const stTip = document.createElement('div'); stTip.innerText = "* 逻辑: P1满 -> P2, P2满 -> P3\n* P3 无需设置阈值"; stTip.style.fontSize = '11px'; stTip.style.color = '#70757a'; stTip.style.paddingLeft = '12px'; t3.appendChild(stTip);
 
+        // [新增] 列维坦区域
+        const hrLev = document.createElement('hr'); hrLev.style.cssText = 'border: 0; border-top: 1px solid #e0e0e0; margin: 16px 0;'; t3.appendChild(hrLev);
+        const levHeader = document.createElement('div'); levHeader.innerHTML = '<strong style="color: #673ab7;">🌌 虚空主宰 (Leviathans)</strong>'; levHeader.style.marginBottom = '8px'; t3.appendChild(levHeader);
+        
+        // 控件: 优先交易列维坦
+        const levTradeRow = document.createElement('div'); levTradeRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 2px 4px;';
+        const levTradeLabel = document.createElement('label'); levTradeLabel.style.cssText = 'display: flex; align-items: center; cursor: pointer; color: #3c4043; font-size: 13px;';
+        const levTradeCb = document.createElement('input'); levTradeCb.type = 'checkbox'; levTradeCb.checked = config.leviathans.autoTrade; 
+        levTradeCb.style.marginRight = '8px'; levTradeCb.style.accentColor = '#673ab7';
+        levTradeCb.addEventListener('change', (e) => { config.leviathans.autoTrade = e.target.checked; saveConfig(); });
+        levTradeLabel.appendChild(levTradeCb); levTradeLabel.appendChild(document.createTextNode('优先交易 (> 15k 难得素)'));
+        levTradeLabel.title = "当列维坦在场且难得素大于 15000 时，暂停 E 合金合成，优先全部交易";
+        levTradeRow.appendChild(levTradeLabel); t3.appendChild(levTradeRow);
+
+        // 控件: 自动喂食
+        const levFeedRow = document.createElement('div'); levFeedRow.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 2px 4px;';
+        const levFeedLabel = document.createElement('label'); levFeedLabel.style.cssText = 'display: flex; align-items: center; cursor: pointer; color: #3c4043; font-size: 13px;';
+        const levFeedCb = document.createElement('input'); levFeedCb.type = 'checkbox'; levFeedCb.checked = config.leviathans.autoFeed;
+        levFeedCb.style.marginRight = '8px'; levFeedCb.style.accentColor = '#673ab7';
+        levFeedCb.addEventListener('change', (e) => { config.leviathans.autoFeed = e.target.checked; saveConfig(); });
+        levFeedLabel.appendChild(levFeedCb); levFeedLabel.appendChild(document.createTextNode('自动喂食死角兽'));
+        levFeedRow.appendChild(levFeedLabel); t3.appendChild(levFeedRow);
+
+
         // T4: Profiles
         const t4 = tabContents[3];
         const profileHeader = document.createElement('div'); profileHeader.innerHTML = '<strong>📂 配置档案管理 (Profiles)</strong>'; profileHeader.style.marginBottom = '12px'; profileHeader.style.color = '#1a73e8'; t4.appendChild(profileHeader);
@@ -608,7 +644,6 @@
                             }
                             if (shouldHunt) {
                                 gamePage.village.huntAll();
-                                // console.log('【自动化】🏹 喵力满，触发打猎');
                             }
                         }
                     }
@@ -627,7 +662,6 @@
                             const race = gamePage.diplomacy.races.find(r => r.name === targetId);
                             if (race && race.unlocked) {
                                 gamePage.diplomacy.tradeAll(race);
-                                // console.log(`【自动化】🤝 喵力满，触发交易: [${race.title}]`);
                             }
                         }
                     }
@@ -641,7 +675,49 @@
             checkAndCraftThreshold('beam', 'scaffold', 'scaffold');
             checkAndCraftThreshold('furs', 'parchment', 'parchment');
             checkAndCraftThreshold('oil', 'kerosene', 'oilKerosene');
-            checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); 
+
+            // ==========================================
+            // [新增] 列维坦 & E合金 互斥逻辑
+            // ==========================================
+            let suppressEludiumCrafting = false;
+
+            // 1. 列维坦自动交易逻辑
+            if (config.leviathans.autoTrade) {
+                try {
+                    const leviRace = gamePage.diplomacy.get("leviathans");
+                    const unobtainium = gamePage.resPool.get("unobtainium");
+                    
+                    // 检查: 种族解锁
+                    if (leviRace && leviRace.unlocked) {
+                        // 检查: 难得素 > 15000 (固定阈值)
+                        if (unobtainium.value > config.leviathans.minUnobtainium) {
+                            // 激活互斥锁，阻止 E 合金合成
+                            suppressEludiumCrafting = true;
+                            // 执行交易
+                            gamePage.diplomacy.tradeAll(leviRace);
+                            // console.log("🌌 优先交易列维坦，已屏蔽 E 合金转化");
+                        }
+                    }
+                } catch (e) { console.error('列维坦交易检测错误:', e); }
+            }
+
+            // 2. 列维坦自动喂食逻辑
+            if (config.leviathans.autoFeed) {
+                try {
+                    const necrocorn = gamePage.resPool.get("necrocorn");
+                    if (necrocorn && necrocorn.value >= 1) {
+                         gamePage.diplomacy.feedElders();
+                         console.log("🦄 自动喂食死角兽");
+                    }
+                } catch(e) {}
+            }
+
+            // 3. E 合金合成逻辑 (受互斥锁控制)
+            if (!suppressEludiumCrafting) {
+                checkAndCraftThreshold('unobtainium', 'eludium', 'eludium'); 
+            }
+            // ==========================================
+
             checkAndCraftThreshold('titanium', 'alloy', 'titaniumAlloy'); 
             checkAndCraftThreshold('uranium', 'thorium', 'uraniumThorium'); 
 
@@ -732,7 +808,7 @@
                 createUI();
                 window.kgAutoGlobalTimer = setInterval(mainLoopTask, 2000);
                 Object.keys(tasks).forEach(key => updateSpecificTimer(key));
-                console.log('>>> 🐱 全能小助手 v7.8.17 (喵力阈值版) 启动成功！ <<<');
+                console.log('>>> 🐱 全能小助手 v7.8.22 (列维坦增强版) 启动成功！ <<<');
             }
         }, 1000);
     }
