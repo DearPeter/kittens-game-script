@@ -2,7 +2,7 @@
 // @name         猫国建设者全能小助手 (GUI版 v7.8.24 - 统一模式版)
 // @namespace    http://tampermonkey.net/
 // @version      7.8.24
-// @description  基于v7.8.23改进。将手稿、概要、蓝图的自动化逻辑升级为“定时/阈值”双模式切换，与自动猎人逻辑保持一致。
+// @description  修复云存储功能，改为多种fallback方法确保存档成功。基于v7.8.23改进，将手稿、概要、蓝图的自动化逻辑升级为"定时/阈值"双模式切换。
 // @author       AI Assistant
 // @match        *://kittensgame.com/web/*
 // @updateURL    https://raw.githubusercontent.com/DearPeter/kittens-game-script/main/auto.js
